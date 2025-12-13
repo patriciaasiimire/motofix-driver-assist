@@ -15,10 +15,11 @@ export function useAuth() {
 
   const checkAuth = useCallback(async () => {
     const token = localStorage.getItem('motofix_token');
-    
+
     if (!token) {
       setIsLoading(false);
       setIsAuthenticated(false);
+      setUser(null);
       return;
     }
 
@@ -29,38 +30,56 @@ export function useAuth() {
       setIsAuthenticated(true);
       localStorage.setItem('motofix_user', JSON.stringify(userData));
     } catch (error) {
+      console.error("Auth check failed:", error);
       localStorage.removeItem('motofix_token');
       localStorage.removeItem('motofix_user');
       setIsAuthenticated(false);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // Try to load from localStorage first for faster initial load
+    // Load from localStorage first for instant UI (avoid flash)
     const storedUser = localStorage.getItem('motofix_user');
     const token = localStorage.getItem('motofix_token');
-    
+
     if (storedUser && token) {
-      setUser(JSON.parse(storedUser));
-      setIsAuthenticated(true);
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        setIsAuthenticated(true);
+      } catch (e) {
+        console.error("Failed to parse stored user", e);
+        localStorage.removeItem('motofix_user');
+      }
     }
-    
+
+    // Always verify with server
     checkAuth();
   }, [checkAuth]);
 
   const login = async (phone: string, otp: string, fullName?: string) => {
-    const response = await authService.login(phone, otp, fullName);
-    const { access_token, user: userData } = response.data;
-    
-    localStorage.setItem('motofix_token', access_token);
-    localStorage.setItem('motofix_user', JSON.stringify(userData));
-    
-    setUser(userData);
-    setIsAuthenticated(true);
-    
-    return userData;
+    try {
+      const response = await authService.login(phone, otp, fullName);
+      const { access_token } = response.data;
+
+      // Some backends return user in response.data, some in response.data.user
+      // Adjust based on your actual API response
+      const userData = response.data.user || response.data;
+
+      localStorage.setItem('motofix_token', access_token);
+      localStorage.setItem('motofix_user', JSON.stringify(userData));
+
+      setUser(userData);
+      setIsAuthenticated(true);
+
+      return userData;
+    } catch (error) {
+      console.error("Login failed:", error);
+      throw error;
+    }
   };
 
   const logout = () => {

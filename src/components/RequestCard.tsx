@@ -2,7 +2,7 @@ import { MapPin, Wrench, Clock, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Request {
-  id: string;
+  id: number | string;  // Allow both — backend returns number
   service_type: string;
   location: string;
   description: string;
@@ -40,7 +40,10 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 export function RequestCard({ request, index }: RequestCardProps) {
   const status = statusConfig[request.status] || statusConfig.pending;
-  
+
+  // Safely convert id to string and format as short ID (e.g., #000042)
+  const shortId = `#${String(request.id).padStart(6, '0')}`;
+
   return (
     <div 
       className="glass-card rounded-2xl p-4 animate-slide-up"
@@ -53,7 +56,7 @@ export function RequestCard({ request, index }: RequestCardProps) {
           </div>
           <div>
             <h3 className="font-semibold text-foreground">{request.service_type}</h3>
-            <p className="text-sm text-muted-foreground">#{request.id.slice(0, 8)}</p>
+            <p className="text-sm text-muted-foreground">{shortId}</p>
           </div>
         </div>
         <span className={cn(
