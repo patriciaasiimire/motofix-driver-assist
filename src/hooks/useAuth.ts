@@ -28,27 +28,30 @@ export function useAuth() {
    */
   const checkAuth = useCallback(async () => {
     try {
-      // Token already in localStorage from axios interceptor
+      // Check if token exists in localStorage
       const token = localStorage.getItem(STORAGE_TOKEN_KEY);
+      console.log('🔍 checkAuth: token exists?', !!token);
       
       if (!token) {
-        // No token, clear everything and mark as unauthenticated
+        console.log('❌ No token found - not authenticated');
         setIsAuthenticated(false);
         setUser(null);
         setIsLoading(false);
         return;
       }
 
+      console.log('✅ Token found, verifying with /auth/me...');
       // Call /auth/me to verify token and get fresh user data
       const response = await authService.getMe();
       const userData = response.data;
       
+      console.log('✅ Auth verification succeeded:', userData);
       setUser(userData);
       setIsAuthenticated(true);
       // Update localStorage with fresh user data
       localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(userData));
     } catch (error: any) {
-      console.error("Auth check failed:", error);
+      console.error('❌ Auth check failed:', error?.response?.status, error?.message);
       // Token is invalid or expired - clear everything
       localStorage.removeItem(STORAGE_TOKEN_KEY);
       localStorage.removeItem(STORAGE_USER_KEY);
@@ -57,6 +60,7 @@ export function useAuth() {
       
       // Show user-friendly error message
       if (error.response?.status === 401) {
+        console.log('⚠️ Token expired or invalid');
         toast.error('Session expired – please login again');
       }
     } finally {
@@ -69,24 +73,32 @@ export function useAuth() {
    * This enables persistent login across page reloads
    */
   useEffect(() => {
+    console.log('📱 useAuth mounted - checking for existing session...');
+    
     // Load from localStorage first for instant UI (avoid flash/flicker)
     const storedToken = localStorage.getItem(STORAGE_TOKEN_KEY);
     const storedUser = localStorage.getItem(STORAGE_USER_KEY);
     
+    console.log('🔍 localStorage check: token?', !!storedToken, 'user?', !!storedUser);
+    
     if (storedToken && storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
+        console.log('✅ Loaded cached user:', parsedUser);
         setUser(parsedUser);
         setIsAuthenticated(true);
         // Leave loading as true, will be set to false after server verification
       } catch (e) {
-        console.error("Failed to parse stored user", e);
+        console.error('❌ Failed to parse stored user', e);
         localStorage.removeItem(STORAGE_USER_KEY);
       }
+    } else {
+      console.log('ℹ️ No cached user found');
     }
 
     // Always verify with server (even if we have cached data)
     // This ensures token is still valid and gets fresh user info
+    console.log('🔄 Starting server verification...');
     checkAuth();
   }, [checkAuth]);
 
@@ -98,26 +110,32 @@ export function useAuth() {
    */
   const login = async (phone: string, otp: string, fullName?: string) => {
     try {
+      console.log('🔐 Attempting login with phone:', phone);
       const response = await authService.login(phone, otp, fullName);
 
       // Backend returns: { access_token, user }
       const { access_token, user: userData } = response.data;
+      
+      console.log('✅ Login successful');
+      console.log('💾 Saving token to localStorage');
 
       // Save JWT token to localStorage
       // axios interceptor will automatically include it in all API requests
       if (access_token) {
         localStorage.setItem(STORAGE_TOKEN_KEY, access_token);
+        console.log('✅ Token saved:', access_token.substring(0, 20) + '...');
       }
 
       // Persist user info for instant UI
       localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(userData));
+      console.log('✅ User saved to localStorage');
 
       setUser(userData);
       setIsAuthenticated(true);
 
       return userData;
     } catch (error) {
-      console.error("Login failed:", error);
+      console.error('❌ Login failed:', error);
       throw error;
     }
   };
@@ -127,9 +145,11 @@ export function useAuth() {
    * Calls /auth/logout on server to clear httpOnly cookie
    */
   const logout = () => {
+    console.log('🚪 Logout initiated');
     // Clear localStorage
     localStorage.removeItem(STORAGE_TOKEN_KEY);
     localStorage.removeItem(STORAGE_USER_KEY);
+    console.log('✅ localStorage cleared');
     
     // Clear state
     setUser(null);
@@ -137,7 +157,7 @@ export function useAuth() {
 
     // Call server to clear httpOnly cookie (best effort - ignore errors)
     authService.logout().catch((err) => {
-      console.error('Logout request failed (non-blocking):', err);
+      console.error('⚠️ Logout request failed (non-blocking):', err);
     });
   };
 

@@ -109,9 +109,13 @@ export default function Login() {
         {/* Logo & Welcome */}
         <div className="text-center mb-10 animate-fade-in">
           <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-primary flex items-center justify-center glow-primary-intense">
-            <Bike className="w-10 h-10 text-primary-foreground" />
+            <img 
+    src="/motofix-logo.png"           // ← put your image in public/ folder
+    alt="Motofix Logo" 
+    className="w-14 h-14 object-contain"  // adjust size as needed
+  />
           </div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">Motofix</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-2">MOTOFIX</h1>
           <p className="text-muted-foreground">
             {step === 'phone' 
               ? 'Get help when you need it most'
@@ -137,7 +141,7 @@ export default function Login() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  We'll send you a verification code
+                  Your a verification code is coming shortly via SMS
                 </p>
               </div>
 
@@ -150,11 +154,11 @@ export default function Login() {
                 {isLoading ? (
                   <>
                     <Loader2 className="animate-spin" />
-                    Sending...
+                    It's coming...
                   </>
                 ) : (
                   <>
-                    Continue
+                    Let's go!
                     <ArrowRight />
                   </>
                 )}
@@ -164,7 +168,7 @@ export default function Login() {
             <form onSubmit={handleLogin} className="space-y-4 animate-slide-up">
               {isNewUser && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Your Name</label>
+                  <label className="text-sm font-medium text-foreground">What's Your Name</label>
                   <Input
                     type="text"
                     placeholder="Enter your full name"
@@ -204,7 +208,7 @@ export default function Login() {
                 {isLoading ? (
                   <>
                     <Loader2 className="animate-spin" />
-                    Verifying...
+                    We're just makin' sure...
                   </>
                 ) : (
                   <>
@@ -223,7 +227,7 @@ export default function Login() {
                 }}
                 className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                ← Change phone number
+                ← Wanna change phone number?
               </button>
             </form>
           )}
