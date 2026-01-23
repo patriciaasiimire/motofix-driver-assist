@@ -10,6 +10,7 @@ export const authApi = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // send/receive httpOnly cookies from the API
   timeout: 30000, // 30s for slow networks
 });
 
@@ -18,6 +19,7 @@ export const requestsApi = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
   timeout: 30000,
 });
 
@@ -62,6 +64,8 @@ export const authService = {
       full_name: fullName,
       role: 'driver' 
     }),
+  
+  logout: () => authApi.post('/auth/logout'),
   
   getMe: () => authApi.get('/auth/me'),
 };
