@@ -27,7 +27,7 @@ const Index = () => {
 
   // Redirect based on auth status
   if (isAuthenticated) {
-    return <Navigate to="/requests" replace />;
+    return <Navigate to="/create-request" replace />;
   }
 
   return <Navigate to="/login" replace />;

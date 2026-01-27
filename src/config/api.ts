@@ -4,6 +4,13 @@ import axios from 'axios';
 export const AUTH_BASE_URL = 'https://motofix-auth-service.onrender.com';
 export const REQUESTS_BASE_URL = 'https://motofix-service-requests.onrender.com';
 
+// Add startup logging
+console.log('🚀 Initializing Motofix API:', {
+  AUTH_BASE_URL,
+  REQUESTS_BASE_URL,
+  timestamp: new Date().toISOString(),
+});
+
 // Create axios instances
 export const authApi = axios.create({
   baseURL: AUTH_BASE_URL,
@@ -31,14 +38,33 @@ const addAuthInterceptor = (instance: ReturnType<typeof axios.create>) => {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
+      console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`, {
+        hasToken: !!token,
+        headers: config.headers,
+      });
       return config;
     },
-    (error) => Promise.reject(error)
+    (error) => {
+      console.error('❌ Request interceptor error:', error);
+      return Promise.reject(error);
+    }
   );
 
   instance.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      console.log(`📥 Response from ${response.config.url}:`, response.status, response.data);
+      return response;
+    },
     (error) => {
+      console.error('❌ Response error:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        method: error.config?.method,
+        data: error.response?.data,
+        message: error.message,
+      });
+      
       if (error.response?.status === 401) {
         localStorage.removeItem('motofix_token');
         localStorage.removeItem('motofix_user');

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { authService } from '@/config/api';
+import { checkServiceHealth } from '@/config/health';
 import { toast } from 'sonner';
 
 type Step = 'phone' | 'otp';
@@ -19,6 +20,19 @@ export default function Login() {
   
   const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
+
+  // Check service health on mount
+  useEffect(() => {
+    const runHealthCheck = async () => {
+      try {
+        await checkServiceHealth();
+      } catch (error) {
+        console.error('Health check error:', error);
+      }
+    };
+    
+    runHealthCheck();
+  }, []);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -52,12 +66,36 @@ export default function Login() {
 
     setIsLoading(true);
     try {
+      console.log('📞 Sending OTP to:', formattedPhone);
       await authService.sendOtp(formattedPhone);
       setPhone(formattedPhone);
       setStep('otp');
       toast.success('OTP sent successfully!');
     } catch (error: any) {
-      const message = error.response?.data?.detail || 'Failed to send OTP';
+      console.error('❌ OTP send failed:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+        code: error.code,
+      });
+      
+      // Better error message based on error type
+      let message = 'Failed to send OTP';
+      
+      if (error.code === 'ECONNABORTED') {
+        message = 'Request timeout - backend service may be starting up. Please try again.';
+      } else if (error.message === 'Network Error') {
+        message = 'Network error - check your connection and backend service status';
+      } else if (error.response?.status === 503) {
+        message = 'Backend service temporarily unavailable - please try again in a moment';
+      } else if (error.response?.data?.detail) {
+        message = error.response.data.detail;
+      } else if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message) {
+        message = error.message;
+      }
+      
       if (message.includes('not found') || message.includes('new')) {
         setIsNewUser(true);
         setPhone(formattedPhone);
