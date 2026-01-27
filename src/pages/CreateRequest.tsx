@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Mic, Camera, Paperclip, Send, Loader2, LocateFixed, X } from 'lucide-react';
+import { MapPin, Mic, Camera, Paperclip, Send, Loader2, LocateFixed, X, Play, Pause, Eye } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,18 +9,25 @@ import { requestsService } from '@/config/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+interface MediaFileWithPreview extends File {
+  preview?: string; // For images
+}
+
 export default function CreateRequest() {
   const [location, setLocation] = useState('');
   const [issue, setIssue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(true);
-  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<MediaFileWithPreview[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [playingAudio, setPlayingAudio] = useState<number | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const audioPlayersRef = useRef<HTMLAudioElement[]>([]);
 
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -115,21 +122,52 @@ export default function CreateRequest() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setMediaFiles([...mediaFiles, ...files]);
+    const filesWithPreview = files.map(file => {
+      const fileWithPreview = file as MediaFileWithPreview;
+      if (file.type.startsWith('image/')) {
+        fileWithPreview.preview = URL.createObjectURL(file);
+      }
+      return fileWithPreview;
+    });
+    setMediaFiles([...mediaFiles, ...filesWithPreview]);
     toast.success(`${files.length} file(s) added`);
     console.log('📎 Files added:', files.map(f => f.name));
   };
 
   const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    setMediaFiles([...mediaFiles, ...files]);
+    const filesWithPreview = files.map(file => {
+      const fileWithPreview = file as MediaFileWithPreview;
+      fileWithPreview.preview = URL.createObjectURL(file);
+      return fileWithPreview;
+    });
+    setMediaFiles([...mediaFiles, ...filesWithPreview]);
     toast.success('Photo added!');
     console.log('📷 Photo captured');
   };
 
+  const playAudio = (index: number) => {
+    if (audioPlayersRef.current[index]) {
+      if (audioPlayersRef.current[index].paused) {
+        audioPlayersRef.current[index].play();
+        setPlayingAudio(index);
+      } else {
+        audioPlayersRef.current[index].pause();
+        setPlayingAudio(null);
+      }
+    }
+  };
+
   const removeMedia = (index: number) => {
+    const file = mediaFiles[index];
+    if (file.preview) {
+      URL.revokeObjectURL(file.preview);
+    }
     const updated = mediaFiles.filter((_, i) => i !== index);
     setMediaFiles(updated);
+    if (audioPlayersRef.current[index]) {
+      audioPlayersRef.current[index].pause();
+    }
     toast.success('File removed');
   };
 
@@ -301,26 +339,130 @@ export default function CreateRequest() {
 
           {/* Media preview */}
           {mediaFiles.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p className="text-xs text-muted-foreground">
                 {mediaFiles.length} item{mediaFiles.length !== 1 ? 's' : ''} attached
               </p>
-              <div className="flex flex-wrap gap-2">
-                {mediaFiles.map((file, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-2 rounded-lg bg-secondary/50 px-3 py-2 text-xs"
-                  >
-                    <span className="truncate max-w-[120px]">{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeMedia(idx)}
-                      className="text-muted-foreground hover:text-foreground"
+              <div className="space-y-2">
+                {mediaFiles.map((file, idx) => {
+                  const isImage = file.type.startsWith('image/');
+                  const isAudio = file.type.startsWith('audio/');
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className="rounded-lg bg-secondary/50 overflow-hidden border border-border/50"
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                      {/* Image Preview */}
+                      {isImage && file.preview && (
+                        <div className="relative">
+                          <img
+                            src={file.preview}
+                            alt={file.name}
+                            className="w-full h-32 object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImage(file.preview!)}
+                            className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 rounded p-1 transition-all"
+                          >
+                            <Eye className="w-4 h-4 text-white" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(idx)}
+                            className="absolute top-2 left-2 bg-red-500/80 hover:bg-red-600 rounded p-1 transition-all"
+                          >
+                            <X className="w-4 h-4 text-white" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Audio Playback */}
+                      {isAudio && (
+                        <div className="p-3 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => playAudio(idx)}
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full p-2 transition-all"
+                          >
+                            {playingAudio === idx ? (
+                              <Pause className="w-4 h-4" />
+                            ) : (
+                              <Play className="w-4 h-4" />
+                            )}
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-foreground truncate">
+                              🎙️ {file.name.replace(/\.webm$|\.mp3$/, '')}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {(file.size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(idx)}
+                            className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <audio
+                            ref={(el) => {
+                              if (el) audioPlayersRef.current[idx] = el;
+                            }}
+                            src={URL.createObjectURL(file)}
+                            onEnded={() => setPlayingAudio(null)}
+                          />
+                        </div>
+                      )}
+
+                      {/* Other Files */}
+                      {!isImage && !isAudio && (
+                        <div className="p-3 flex items-center gap-2">
+                          <span className="text-xl">📎</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-foreground truncate">
+                              {file.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {(file.size / 1024).toFixed(1)} KB
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(idx)}
+                            className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Image Preview Modal */}
+          {previewImage && (
+            <div
+              className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+              onClick={() => setPreviewImage(null)}
+            >
+              <div className="relative max-w-2xl max-h-[80vh]">
+                <img
+                  src={previewImage}
+                  alt="Preview"
+                  className="w-full h-full object-contain"
+                />
+                <button
+                  onClick={() => setPreviewImage(null)}
+                  className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 transition-all"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </div>
           )}
