@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { PrivateRoute } from "@/components/PrivateRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import Home from "./pages/Home";
 import RequestsList from "./pages/RequestsList";
 import CreateRequest from "./pages/CreateRequest";
 import Profile from "./pages/Profile";
@@ -24,6 +25,14 @@ function AppContent() {
         <Route path="/login" element={<Login />} />
         <Route
           path="/requests"
+          element={
+            <PrivateRoute>
+              <Home />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/history"
           element={
             <PrivateRoute>
               <RequestsList />

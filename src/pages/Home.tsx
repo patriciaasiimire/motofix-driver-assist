@@ -17,7 +17,7 @@ interface Request {
   created_at?: string;
 }
 
-export default function RequestsList() {
+export default function Home() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -79,15 +79,15 @@ export default function RequestsList() {
     fetchRequests(false);
   };
 
-  // Show only completed and cancelled requests (history)
-  const historyRequests = requests.filter((r) =>
-    ['completed', 'cancelled'].includes(r.status)
+  // Show only active requests on home page
+  const activeRequests = requests.filter(
+    (r) => !['completed', 'cancelled'].includes(r.status)
   );
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background pb-24">
-        <Header title="History" subtitle="Your completed and cancelled requests" />
+        <Header title="Active Requests" subtitle="Your ongoing breakdown requests" />
         <div className="p-4 max-w-md mx-auto space-y-4">
           {[1, 2, 3].map((i) => (
             <div
@@ -115,13 +115,13 @@ export default function RequestsList() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <Header title="History" subtitle="Your completed and cancelled requests" />
+      <Header title="Active Requests" subtitle="Your ongoing breakdown requests" />
 
       <div className="p-4 max-w-md mx-auto">
         {/* Refresh button */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-medium text-muted-foreground">
-            {historyRequests.length} request{historyRequests.length !== 1 ? 's' : ''}
+            {activeRequests.length} request{activeRequests.length !== 1 ? 's' : ''}
           </h2>
           <button
             onClick={handleRefresh}
@@ -142,21 +142,27 @@ export default function RequestsList() {
           </div>
         )}
 
-        {historyRequests.length === 0 ? (
+        {activeRequests.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-muted flex items-center justify-center">
               <Inbox className="w-10 h-10 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
-              No history yet
+              No active requests
             </h3>
             <p className="text-muted-foreground mb-6">
-              Completed and cancelled requests will appear here
+              Create a new request when you need assistance
             </p>
+            <Button asChild>
+              <Link to="/create-request">
+                <PlusCircle />
+                Create Request
+              </Link>
+            </Button>
           </div>
         ) : (
           <div className="space-y-3">
-            {historyRequests.map((request, index) => (
+            {activeRequests.map((request, index) => (
               <RequestCard
                 key={request.id}
                 request={request}

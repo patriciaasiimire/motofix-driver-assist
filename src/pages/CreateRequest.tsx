@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Wrench, FileText, Send, Loader2, LocateFixed } from 'lucide-react';
 import { Header } from '@/components/Header';
@@ -23,10 +23,36 @@ export default function CreateRequest() {
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isGettingLocation, setIsGettingLocation] = useState(true);
 
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // Auto-detect location on mount
+  useEffect(() => {
+    autoDetectLocation();
+  }, []);
+
+  const autoDetectLocation = () => {
+    if (!navigator.geolocation) {
+      setIsGettingLocation(false);
+      return;
+    }
+
+    setIsGettingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+        setIsGettingLocation(false);
+      },
+      (error) => {
+        // Silently fail if location cannot be detected
+        setIsGettingLocation(false);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+  };
 
   const handleGetLocation = () => {
     if (!navigator.geolocation) {
@@ -55,11 +81,6 @@ export default function CreateRequest() {
 
     if (!serviceType) {
       toast.error('Please select a service type');
-      return;
-    }
-
-    if (!location.trim()) {
-      toast.error('Please enter your location');
       return;
     }
 
@@ -121,14 +142,16 @@ export default function CreateRequest() {
           <label className="text-sm font-medium text-foreground flex items-center gap-2">
             <MapPin className="w-4 h-4 text-primary" />
             Your Location
+            {isGettingLocation && <Loader2 className="w-3 h-3 animate-spin text-primary/60" />}
           </label>
           <div className="flex gap-2">
             <Input
               type="text"
-              placeholder="Enter your location or landmark"
+              placeholder={isGettingLocation ? "Detecting location..." : "Enter your location or landmark"}
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               className="flex-1"
+              disabled={isGettingLocation}
             />
             <Button
               type="button"
@@ -145,7 +168,7 @@ export default function CreateRequest() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Tip: Use GPS or describe a nearby landmark
+            {isGettingLocation ? "Detecting your location..." : "Optional: GPS auto-detected or describe a nearby landmark"}
           </p>
         </div>
 

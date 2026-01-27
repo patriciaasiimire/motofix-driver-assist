@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { User, Phone, Shield, LogOut, ChevronRight, Bike } from 'lucide-react';
+import { User, Phone, Shield, LogOut, ChevronRight } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -41,7 +41,11 @@ export default function Profile() {
         {/* Profile Header */}
         <div className="glass-card rounded-2xl p-6 text-center animate-slide-up">
           <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-primary flex items-center justify-center glow-primary">
-            <Bike className="w-10 h-10 text-primary-foreground" />
+            <img 
+              src="/motofix-logo.png" 
+              alt="Motofix Logo" 
+              className="w-14 h-14 object-contain"
+            />
           </div>
           <h2 className="text-xl font-bold text-foreground mb-1">
             {user?.full_name || 'Driver'}
