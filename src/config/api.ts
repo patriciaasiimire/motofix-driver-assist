@@ -106,6 +106,17 @@ export const requestsService = {
     phone: string;
   }) => requestsApi.post('/requests/', data),
   
+  createWithMedia: (formData: FormData) => {
+    // For file uploads, use the dedicated FormData endpoint
+    const config = {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    };
+    // Use the /requests-with-media/ endpoint for FormData submissions
+    return requestsApi.post('/requests-with-media/', formData, config);
+  },
+  
   getAll: () => requestsApi.get('/requests/'),
   
   getById: (id: string) => requestsApi.get(`/requests/${id}`),

@@ -85,20 +85,35 @@ export default function CreateRequest() {
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false,
+        }
+      });
+      
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const audioFile = new File([audioBlob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' });
+        
+        // Add preview URL for audio
+        (audioFile as MediaFileWithPreview).preview = URL.createObjectURL(audioBlob);
+        
         setMediaFiles([...mediaFiles, audioFile]);
         toast.success('Voice note recorded!');
-        console.log('🎙️ Voice note added');
+        console.log('🎙️ Voice note added, size:', audioBlob.size);
 
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
@@ -106,10 +121,10 @@ export default function CreateRequest() {
 
       mediaRecorderRef.current.start();
       setIsRecording(true);
-      toast.info('Recording...');
+      toast.info('Recording... Speak clearly');
     } catch (error) {
       console.error('❌ Microphone error:', error);
-      toast.error('Unable to access microphone');
+      toast.error('Unable to access microphone. Check browser permissions.');
     }
   };
 
@@ -194,14 +209,33 @@ export default function CreateRequest() {
         media_files: mediaFiles.length,
       });
 
-      // For now, submit without files (backend needs to support FormData)
-      const response = await requestsService.create({
-        customer_name: user?.full_name || 'Driver',
-        service_type: 'Other', // Drivers now just describe, so default to Other
-        location: location.trim(),
-        description: issue.trim(),
-        phone: user?.phone || '',
-      });
+      let response;
+
+      // If there are media files, use FormData
+      if (mediaFiles.length > 0) {
+        const formData = new FormData();
+        formData.append('customer_name', user?.full_name || 'Driver');
+        formData.append('service_type', 'Other');
+        formData.append('location', location.trim());
+        formData.append('description', issue.trim());
+        formData.append('phone', user?.phone || '');
+        
+        // Append media files
+        mediaFiles.forEach((file, index) => {
+          formData.append(`media_files`, file);
+        });
+
+        response = await requestsService.createWithMedia(formData);
+      } else {
+        // Submit without files
+        response = await requestsService.create({
+          customer_name: user?.full_name || 'Driver',
+          service_type: 'Other',
+          location: location.trim(),
+          description: issue.trim(),
+          phone: user?.phone || '',
+        });
+      }
 
       console.log('✅ Request submitted successfully:', response.data);
       toast.success('Request submitted! A mechanic will respond soon.');
@@ -411,7 +445,7 @@ export default function CreateRequest() {
                             ref={(el) => {
                               if (el) audioPlayersRef.current[idx] = el;
                             }}
-                            src={URL.createObjectURL(file)}
+                            src={file.preview || URL.createObjectURL(file)}
                             onEnded={() => setPlayingAudio(null)}
                           />
                         </div>
