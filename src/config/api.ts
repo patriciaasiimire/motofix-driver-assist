@@ -123,4 +123,7 @@ export const requestsService = {
   
   updateStatus: (id: string, status: string) =>
     requestsApi.patch(`/requests/${id}/status`, { status }),
+  
+  getCallPartner: (id: string) =>
+    requestsApi.get<{ phone: string }>(`/requests/${id}/call-partner`),
 };

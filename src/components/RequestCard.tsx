@@ -1,5 +1,8 @@
-import { MapPin, Wrench, Clock, ChevronRight } from 'lucide-react';
+import { MapPin, Wrench, Clock, ChevronRight, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { requestsService } from '@/config/api';
+import { toast } from 'sonner';
+import { useState } from 'react';
 
 interface Request {
   id: number | string;  // Allow both — backend returns number
@@ -40,9 +43,38 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 
 export function RequestCard({ request, index }: RequestCardProps) {
   const status = statusConfig[request.status] || statusConfig.pending;
+  const [isCalling, setIsCalling] = useState(false);
 
   // Safely convert id to string and format as short ID (e.g., #000042)
   const shortId = `#${String(request.id).padStart(6, '0')}`;
+
+  // Check if calling is allowed (only for accepted or en_route status)
+  const canCallMechanic = request.status === 'accepted' || request.status === 'en_route';
+
+  const handleCallMechanic = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click event
+    
+    if (!canCallMechanic) {
+      toast.error('Calling is only available for active jobs');
+      return;
+    }
+
+    setIsCalling(true);
+    try {
+      const response = await requestsService.getCallPartner(String(request.id));
+      const phone = response.data.phone;
+      
+      // Never display the phone - just trigger the call
+      if (phone) {
+        window.location.href = `tel:${phone}`;
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.detail || 'Unable to call mechanic';
+      toast.error(message);
+    } finally {
+      setIsCalling(false);
+    }
+  };
 
   return (
     <div 
@@ -93,10 +125,23 @@ export function RequestCard({ request, index }: RequestCardProps) {
               : 'Just now'}
           </span>
         </div>
-        <button className="flex items-center gap-1 text-primary text-sm font-medium hover:gap-2 transition-all">
-          View Details
-          <ChevronRight className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {canCallMechanic && (
+            <button
+              onClick={handleCallMechanic}
+              disabled={isCalling}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Call Mechanic"
+            >
+              <Phone className="w-4 h-4" />
+              {isCalling ? 'Calling...' : 'Call'}
+            </button>
+          )}
+          <button className="flex items-center gap-1 text-primary text-sm font-medium hover:gap-2 transition-all">
+            View Details
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
