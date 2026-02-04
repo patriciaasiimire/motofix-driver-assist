@@ -27,7 +27,7 @@ export const requestsApi = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true,
-  timeout: 30000,
+  timeout: 120000, // 2 min for media uploads
 });
 
 // JWT interceptor for authenticated requests
@@ -37,6 +37,10 @@ const addAuthInterceptor = (instance: ReturnType<typeof axios.create>) => {
       const token = localStorage.getItem('motofix_token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+      }
+      // FormData: let browser set Content-Type with boundary (do not send application/json)
+      if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
       }
       console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`, {
         hasToken: !!token,
@@ -107,14 +111,7 @@ export const requestsService = {
   }) => requestsApi.post('/requests/', data),
   
   createWithMedia: (formData: FormData) => {
-    // For file uploads, use the dedicated FormData endpoint
-    const config = {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    };
-    // Use the /requests-with-media/ endpoint for FormData submissions
-    return requestsApi.post('/requests-with-media/', formData, config);
+    return requestsApi.post('/requests-with-media/', formData);
   },
   
   getAll: () => requestsApi.get('/requests/'),

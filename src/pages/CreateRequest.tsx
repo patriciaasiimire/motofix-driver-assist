@@ -243,7 +243,7 @@ export default function CreateRequest() {
         issue: issue.trim(),
         location: location.trim(),
         phone: user?.phone,
-        media_files: mediaFiles.length,
+        hasMedia: mediaFiles.length > 0,
       });
 
       let response;
