@@ -1,8 +1,9 @@
-import { MapPin, Wrench, Clock, ChevronRight, Phone } from 'lucide-react';
+import { MapPin, Wrench, Clock, ChevronRight, Phone, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { requestsService } from '@/config/api';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { reverseGeocode, isCoordString, parseCoordString } from '@/utils/geocode';
 
 interface Request {
   id: number | string;  // Allow both — backend returns number
@@ -41,12 +42,53 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   },
 };
 
+type GeocodeStatus = 'idle' | 'loading' | 'done' | 'error';
+
 export function RequestCard({ request, index }: RequestCardProps) {
   const status = statusConfig[request.status] || statusConfig.pending;
   const [isCalling, setIsCalling] = useState(false);
+  const [displayLocation, setDisplayLocation] = useState<string>(request.location);
+  const [geocodeStatus, setGeocodeStatus] = useState<GeocodeStatus>('idle');
 
   // Safely convert id to string and format as short ID (e.g., #000042)
   const shortId = `#${String(request.id).padStart(6, '0')}`;
+
+  // Reverse geocode when location is raw coordinates (display only; never change stored value)
+  useEffect(() => {
+    const loc = request.location?.trim() ?? '';
+    if (!isCoordString(loc)) {
+      setDisplayLocation(loc || '—');
+      setGeocodeStatus('idle');
+      return;
+    }
+    const coords = parseCoordString(loc);
+    if (!coords) {
+      setDisplayLocation(loc);
+      setGeocodeStatus('idle');
+      return;
+    }
+    setGeocodeStatus('loading');
+    let cancelled = false;
+    reverseGeocode(coords.lat, coords.lng)
+      .then((address) => {
+        if (cancelled) return;
+        if (address) {
+          setDisplayLocation(address);
+          setGeocodeStatus('done');
+        } else {
+          setDisplayLocation('Near your current location');
+          setGeocodeStatus('error');
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDisplayLocation('Near your current location');
+        setGeocodeStatus('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [request.location]);
 
   // Check if calling is allowed (only for accepted or en_route status)
   const canCallMechanic = request.status === 'accepted' || request.status === 'en_route';
@@ -100,9 +142,18 @@ export function RequestCard({ request, index }: RequestCardProps) {
       </div>
 
       <div className="space-y-2 mb-3">
-        <div className="flex items-start gap-2 text-sm">
+        <div className="flex items-start gap-2 text-sm min-h-[1.25rem]">
           <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-          <span className="text-muted-foreground line-clamp-1">{request.location}</span>
+          {geocodeStatus === 'loading' ? (
+            <span className="text-muted-foreground inline-flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              Finding address...
+            </span>
+          ) : (
+            <span className="text-muted-foreground line-clamp-2" title={displayLocation}>
+              {displayLocation || '—'}
+            </span>
+          )}
         </div>
         {request.description && (
           <p className="text-sm text-muted-foreground line-clamp-2 pl-6">

@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { requestsService } from '@/config/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { reverseGeocode, isCoordString, parseCoordString } from '@/utils/geocode';
 
 interface MediaFileWithPreview extends File {
   preview?: string; // For images
@@ -18,6 +19,8 @@ export default function CreateRequest() {
   const [issue, setIssue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(true);
+  const [friendlyAddress, setFriendlyAddress] = useState<string | null>(null);
+  const [addressStatus, setAddressStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [mediaFiles, setMediaFiles] = useState<MediaFileWithPreview[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<number | null>(null);
@@ -36,6 +39,40 @@ export default function CreateRequest() {
   useEffect(() => {
     autoDetectLocation();
   }, []);
+
+  // Reverse geocode for display only when location is coordinates (debounced 1s)
+  useEffect(() => {
+    const loc = location.trim();
+    if (!isCoordString(loc)) {
+      setFriendlyAddress(null);
+      setAddressStatus('idle');
+      return;
+    }
+    const coords = parseCoordString(loc);
+    if (!coords) return;
+
+    const t = setTimeout(() => {
+      setAddressStatus('loading');
+      reverseGeocode(coords.lat, coords.lng)
+        .then((address) => {
+          if (address) {
+            setFriendlyAddress(address);
+            setAddressStatus('done');
+          } else {
+            setFriendlyAddress('Near your current location');
+            setAddressStatus('error');
+            toast.error("Couldn't find address — type manually");
+          }
+        })
+        .catch(() => {
+          setFriendlyAddress('Near your current location');
+          setAddressStatus('error');
+          toast.error("Couldn't find address — type manually");
+        });
+    }, 1000);
+
+    return () => clearTimeout(t);
+  }, [location]);
 
   const autoDetectLocation = () => {
     if (!navigator.geolocation) {
@@ -277,7 +314,7 @@ export default function CreateRequest() {
               placeholder={isGettingLocation ? "Detecting..." : "Enter location or landmark"}
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              className="flex-1"
+              className="flex-1 min-h-[2.75rem]"
               disabled={isGettingLocation}
             />
             <Button
@@ -286,11 +323,25 @@ export default function CreateRequest() {
               size="icon"
               onClick={handleGetLocation}
               disabled={isGettingLocation}
-              className="shrink-0"
+              className="shrink-0 min-h-[2.75rem] min-w-[2.75rem]"
             >
               <LocateFixed className={cn("w-5 h-5", isGettingLocation && "animate-pulse")} />
             </Button>
           </div>
+          {addressStatus === 'loading' && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              Finding address...
+            </p>
+          )}
+          {addressStatus === 'done' && friendlyAddress && (
+            <p className="text-sm text-muted-foreground line-clamp-2" title={friendlyAddress}>
+              📍 {friendlyAddress}
+            </p>
+          )}
+          {addressStatus === 'error' && friendlyAddress && (
+            <p className="text-sm text-muted-foreground">📍 {friendlyAddress}</p>
+          )}
         </div>
 
         {/* Issue Description */}
