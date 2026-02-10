@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Mic, Camera, Paperclip, Send, Loader2, LocateFixed, X, Play, Pause, Eye } from 'lucide-react';
+import { MapPin, Mic, Camera, Paperclip, Send, Loader2, LocateFixed, X, Play, Pause, Eye, Wrench, Sparkles } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,11 @@ import { requestsService } from '@/config/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { reverseGeocode, isCoordString, parseCoordString } from '@/utils/geocode';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+type ServiceType = 'mechanic' | 'car_wash';
+type WashType = 'basic' | 'premium' | 'interior';
+type VehicleType = 'boda' | 'car' | 'truck';
 
 interface MediaFileWithPreview extends File {
   preview?: string; // For images
@@ -25,6 +30,9 @@ export default function CreateRequest() {
   const [isRecording, setIsRecording] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<number | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [serviceType, setServiceType] = useState<ServiceType>('mechanic');
+  const [washType, setWashType] = useState<WashType>('basic');
+  const [vehicleType, setVehicleType] = useState<VehicleType>('boda');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -236,11 +244,33 @@ export default function CreateRequest() {
       return;
     }
 
+    const baseDescription = issue.trim();
+    const washLabelMap: Record<WashType, string> = {
+      basic: 'Basic',
+      premium: 'Premium',
+      interior: 'Interior',
+    };
+    const vehicleLabelMap: Record<VehicleType, string> = {
+      boda: 'boda',
+      car: 'car',
+      truck: 'truck',
+    };
+
+    let finalDescription = baseDescription;
+    if (serviceType === 'car_wash') {
+      const washLabel = washLabelMap[washType];
+      const vehicleLabel = vehicleLabelMap[vehicleType];
+      const summary = `Car wash • ${washLabel} wash for ${vehicleLabel}`;
+      finalDescription = baseDescription ? `${baseDescription} — ${summary}` : summary;
+    }
+
+    const serviceTypeValue = serviceType === 'car_wash' ? 'Car Wash' : 'Other';
+
     setIsLoading(true);
     try {
       console.log('📤 Submitting request:', {
         customer_name: user?.full_name,
-        issue: issue.trim(),
+        issue: finalDescription,
         location: location.trim(),
         phone: user?.phone,
         hasMedia: mediaFiles.length > 0,
@@ -252,9 +282,9 @@ export default function CreateRequest() {
       if (mediaFiles.length > 0) {
         const formData = new FormData();
         formData.append('customer_name', user?.full_name || 'Driver');
-        formData.append('service_type', 'Other');
+        formData.append('service_type', serviceTypeValue);
         formData.append('location', location.trim());
-        formData.append('description', issue.trim());
+        formData.append('description', finalDescription);
         formData.append('phone', user?.phone || '');
         
         // Append media files
@@ -267,9 +297,9 @@ export default function CreateRequest() {
         // Submit without files
         response = await requestsService.create({
           customer_name: user?.full_name || 'Driver',
-          service_type: 'Other',
+          service_type: serviceTypeValue,
           location: location.trim(),
-          description: issue.trim(),
+          description: finalDescription,
           phone: user?.phone || '',
         });
       }
@@ -341,6 +371,120 @@ export default function CreateRequest() {
           )}
           {addressStatus === 'error' && friendlyAddress && (
             <p className="text-sm text-muted-foreground">📍 {friendlyAddress}</p>
+          )}
+        </div>
+
+        {/* Service Type */}
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-foreground">
+            Service Type
+          </label>
+          <div className="grid grid-cols-1 gap-2">
+            <button
+              type="button"
+              onClick={() => setServiceType('mechanic')}
+              className={cn(
+                "w-full rounded-xl border-2 px-4 py-3 text-left flex items-center justify-between gap-3 min-h-[2.75rem]",
+                "transition-all duration-200",
+                serviceType === 'mechanic'
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-secondary/50 hover:border-primary/40"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-9 h-9 rounded-full flex items-center justify-center",
+                  serviceType === 'mechanic' ? "bg-primary text-primary-foreground" : "bg-background text-primary"
+                )}>
+                  <Wrench className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Mechanic Help
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    For breakdowns, towing, repairs & more
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setServiceType('car_wash')}
+              className={cn(
+                "w-full rounded-xl border-2 px-4 py-3 text-left flex items-center justify-between gap-3 min-h-[2.75rem]",
+                "transition-all duration-200",
+                serviceType === 'car_wash'
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-secondary/50 hover:border-primary/40"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-9 h-9 rounded-full flex items-center justify-center",
+                  serviceType === 'car_wash' ? "bg-primary text-primary-foreground" : "bg-background text-primary"
+                )}>
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Car Wash
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Request a wash for your vehicle
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          {serviceType === 'car_wash' && (
+            <div className="mt-2 space-y-3 rounded-xl border border-border/60 bg-secondary/40 p-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground">
+                  Wash type
+                </label>
+                <Select
+                  value={washType}
+                  onValueChange={(value) => setWashType(value as WashType)}
+                >
+                  <SelectTrigger className="w-full min-h-[2.75rem] rounded-xl">
+                    <SelectValue placeholder="Select wash type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="basic">Basic wash</SelectItem>
+                    <SelectItem value="premium">Premium wash</SelectItem>
+                    <SelectItem value="interior">Interior clean</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Choose how thorough you want the wash to be.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground">
+                  Vehicle type
+                </label>
+                <Select
+                  value={vehicleType}
+                  onValueChange={(value) => setVehicleType(value as VehicleType)}
+                >
+                  <SelectTrigger className="w-full min-h-[2.75rem] rounded-xl">
+                    <SelectValue placeholder="Select vehicle type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="boda">Boda</SelectItem>
+                    <SelectItem value="car">Car</SelectItem>
+                    <SelectItem value="truck">Truck</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Helps us send the right person and tools.
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
