@@ -412,14 +412,15 @@ export default function CreateRequest() {
             multiple
             className="hidden"
             onChange={handleFileSelect}
+            aria-label="Select files to attach"
           />
           <input
             ref={cameraInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={handleCameraCapture}
+            title="Capture photo from camera"
           />
 
           {/* Media preview */}
@@ -450,6 +451,8 @@ export default function CreateRequest() {
                             type="button"
                             onClick={() => setPreviewImage(file.preview!)}
                             className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 rounded p-1 transition-all"
+                            aria-label="View full image"
+                            title="View full image"
                           >
                             <Eye className="w-4 h-4 text-white" />
                           </button>
@@ -457,6 +460,8 @@ export default function CreateRequest() {
                             type="button"
                             onClick={() => removeMedia(idx)}
                             className="absolute top-2 left-2 bg-red-500/80 hover:bg-red-600 rounded p-1 transition-all"
+                            aria-label="Remove image"
+                            title="Remove image"
                           >
                             <X className="w-4 h-4 text-white" />
                           </button>
@@ -470,6 +475,8 @@ export default function CreateRequest() {
                             type="button"
                             onClick={() => playAudio(idx)}
                             className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full p-2 transition-all"
+                            aria-label={playingAudio === idx ? "Pause audio" : "Play audio"}
+                            title={playingAudio === idx ? "Pause audio" : "Play audio"}
                           >
                             {playingAudio === idx ? (
                               <Pause className="w-4 h-4" />
@@ -489,6 +496,8 @@ export default function CreateRequest() {
                             type="button"
                             onClick={() => removeMedia(idx)}
                             className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                            aria-label="Remove audio file"
+                            title="Remove audio file"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -518,6 +527,8 @@ export default function CreateRequest() {
                             type="button"
                             onClick={() => removeMedia(idx)}
                             className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                            aria-label="Remove file"
+                            title="Remove file"
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -545,6 +556,8 @@ export default function CreateRequest() {
                 <button
                   onClick={() => setPreviewImage(null)}
                   className="absolute top-4 right-4 bg-red-500 hover:bg-red-600 text-white rounded-full p-2 transition-all"
+                  aria-label="Close image preview"
+                  title="Close image preview"
                 >
                   <X className="w-5 h-5" />
                 </button>

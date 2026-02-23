@@ -1,11 +1,12 @@
 /**
- * Free reverse geocoding via OpenStreetMap Nominatim.
+ * Free reverse geocoding via backend proxy to OpenStreetMap Nominatim.
  * Usage policy: max 1 request per second. No API key required.
  * @see https://nominatim.org/release-docs/develop/api/Reverse/
  */
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/reverse';
-const USER_AGENT = 'MotofixDriverApp/1.0 (contact@motofix.org)';
+import { REQUESTS_BASE_URL } from '@/config/api';
+
+const BACKEND_REVERSE_GEOCODE_URL = `${REQUESTS_BASE_URL}/geocode/reverse`;
 const MIN_INTERVAL_MS = 1000; // 1 request per second
 let lastRequestTime = 0;
 
@@ -78,14 +79,13 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string |
     zoom: '18',
     addressdetails: '1',
   });
-  const url = `${NOMINATIM_URL}?${params.toString()}`;
+  const url = `${BACKEND_REVERSE_GEOCODE_URL}?${params.toString()}`;
 
   try {
     const res = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': USER_AGENT,
       },
     });
 
