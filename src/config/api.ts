@@ -64,8 +64,10 @@ const addAuthInterceptor = (instance: ReturnType<typeof axios.create>) => {
         status: error.response?.status,
         statusText: error.response?.statusText,
         url: error.config?.url,
+        fullUrl: `${error.config?.baseURL || ''}${error.config?.url || ''}`,
         method: error.config?.method,
         data: error.response?.data,
+        rawResponse: error.response,
         message: error.message,
       });
       
