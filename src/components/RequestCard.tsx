@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { requestsService } from '@/config/api';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { reverseGeocode, isCoordString, parseCoordString } from '@/utils/geocode';
 
 interface Request {
@@ -45,6 +46,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 type GeocodeStatus = 'idle' | 'loading' | 'done' | 'error';
 
 export function RequestCard({ request, index }: RequestCardProps) {
+  const navigate = useNavigate();
   const status = statusConfig[request.status] || statusConfig.pending;
   const [isCalling, setIsCalling] = useState(false);
   const [displayLocation, setDisplayLocation] = useState<string>(request.location);
@@ -188,7 +190,10 @@ export function RequestCard({ request, index }: RequestCardProps) {
               {isCalling ? 'Calling...' : 'Call'}
             </button>
           )}
-          <button className="flex items-center gap-1 text-primary text-sm font-medium hover:gap-2 transition-all">
+          <button
+            onClick={() => navigate(`/requests/${request.id}`)}
+            className="flex items-center gap-1 text-primary text-sm font-medium hover:gap-2 transition-all"
+          >
             View Details
             <ChevronRight className="w-4 h-4" />
           </button>

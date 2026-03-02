@@ -1,33 +1,94 @@
 // src/services/driverWs.ts
-// Example: driver app WebSocket listener for job_taken events
-import { getToken } from '@/lib/auth'; // adapt to your auth helper
+// Production-ready WebSocket client for real-time request status updates
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { REQUESTS_BASE_URL } from '@/config/api';
 
-export function listenForDriverNotifications(myRequestId: number, onTaken: (data: any) => void) {
-  const url = API_BASE_URL.replace(/^http/, 'ws') + '/ws/jobs';
-  const ws = new WebSocket(url);
+const WS_BASE = REQUESTS_BASE_URL.replace(/^https/, 'wss').replace(/^http/, 'ws');
 
-  ws.onopen = () => console.log('[Driver WS] connected');
-  ws.onmessage = (ev) => {
-    try {
-      const payload = JSON.parse(ev.data);
-      if (payload.type === 'job_taken' && payload.job_id === myRequestId) {
-        onTaken(payload);
-      }
-    } catch (err) {
-      console.warn('Driver WS parse error', err);
-    }
-  };
-
-  ws.onclose = () => console.log('[Driver WS] disconnected');
-  ws.onerror = (e) => console.warn('[Driver WS] error', e);
-
-  return () => ws.close();
+export interface WsPayload {
+  type: string;
+  job_id?: number | string;
+  request_id?: number | string;
+  status?: string;
+  mechanic_id?: string;
+  mechanic_name?: string;
+  mechanic_lat?: number;
+  mechanic_lon?: number;
+  [key: string]: unknown;
 }
 
-// Usage (example):
-// const stop = listenForDriverNotifications(requestId, (data) => {
-//   toast('Mechanic accepted', { description: `${data.mechanic.name} accepted your job — ETA ${data.eta_minutes} min` })
-// });
-// // call stop() when leaving page
+/**
+ * Opens a WebSocket connection to the requests service with automatic
+ * exponential-backoff reconnection. Reads the JWT from localStorage so
+ * no import of a broken auth helper is needed.
+ *
+ * @returns cleanup function — call it when the consumer unmounts.
+ */
+export function createRequestsWs(
+  onMessage: (payload: WsPayload) => void,
+  onConnect?: () => void,
+  onDisconnect?: () => void,
+): () => void {
+  let ws: WebSocket | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  let retryCount = 0;
+
+  const connect = () => {
+    if (stopped) return;
+
+    const token = localStorage.getItem('motofix_token');
+    // Pass token as query param so the backend can authenticate WS connections
+    const url = `${WS_BASE}/ws/jobs${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = () => {
+      retryCount = 0;
+      console.log('[WS] connected');
+      onConnect?.();
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const payload: WsPayload = JSON.parse(ev.data as string);
+        onMessage(payload);
+      } catch {
+        // Ignore malformed frames
+      }
+    };
+
+    ws.onclose = () => {
+      ws = null;
+      onDisconnect?.();
+      scheduleReconnect();
+    };
+
+    ws.onerror = () => {
+      // onclose will fire after onerror, triggering reconnect
+      ws?.close();
+    };
+  };
+
+  const scheduleReconnect = () => {
+    if (stopped) return;
+    // Exponential backoff: 1s, 2s, 4s … capped at 30s
+    const delay = Math.min(1000 * 2 ** retryCount, 30_000);
+    retryCount = Math.min(retryCount + 1, 5);
+    console.log(`[WS] reconnecting in ${delay}ms (attempt ${retryCount})`);
+    reconnectTimer = setTimeout(connect, delay);
+  };
+
+  connect();
+
+  return () => {
+    stopped = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    ws?.close();
+  };
+}

@@ -1,85 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, RefreshCw, AlertCircle, Inbox } from 'lucide-react';
+import { PlusCircle, RefreshCw, AlertCircle, Inbox, Wifi } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { RequestCard } from '@/components/RequestCard';
 import { Button } from '@/components/ui/button';
-import { requestsService } from '@/config/api';
-import { toast } from 'sonner';
+import { useRequests } from '@/contexts/RequestContext';
 import { cn } from '@/lib/utils';
 
-interface Request {
-  id: string;
-  service_type: string;
-  location: string;
-  description: string;
-  status: string;
-  created_at?: string;
-}
-
 export default function Home() {
-  const [requests, setRequests] = useState<Request[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const previousStatusesRef = useRef<Map<string, string>>(new Map());
+  const { requests, isLoading, error, isWsConnected, refresh } = useRequests();
 
-  const fetchRequests = useCallback(async (showLoader = true) => {
-    if (showLoader) setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await requestsService.getAll();
-      const newRequests: Request[] = response.data || [];
-      
-      // Check for status changes and show toasts
-      newRequests.forEach((request) => {
-        const previousStatus = previousStatusesRef.current.get(request.id);
-        if (previousStatus && previousStatus !== request.status) {
-          const statusMessages: Record<string, string> = {
-            accepted: '🔧 A mechanic has accepted your request!',
-            in_progress: '🛠️ Repair work is in progress!',
-            completed: '✅ Your request has been completed!',
-            cancelled: '❌ Your request was cancelled',
-          };
-          const message = statusMessages[request.status];
-          if (message) {
-            toast.success(message, { duration: 5000 });
-          }
-        }
-        previousStatusesRef.current.set(request.id, request.status);
-      });
-
-      setRequests(newRequests);
-    } catch (err: any) {
-      const message = err.response?.data?.detail || 'Failed to load requests';
-      setError(message);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
-  // Initial fetch
-  useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
-
-  // Polling every 10 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchRequests(false);
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [fetchRequests]);
-
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    fetchRequests(false);
-  };
-
-  // Show only active requests on home page
   const activeRequests = requests.filter(
     (r) => !['completed', 'cancelled'].includes(r.status)
   );
@@ -90,10 +19,7 @@ export default function Home() {
         <Header title="Active Requests" subtitle="Your ongoing breakdown requests" />
         <div className="p-4 max-w-md mx-auto space-y-4">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="glass-card rounded-2xl p-4 animate-pulse"
-            >
+            <div key={i} className="glass-card rounded-2xl p-4 animate-pulse">
               <div className="flex items-start gap-3 mb-3">
                 <div className="w-12 h-12 rounded-xl bg-muted" />
                 <div className="flex-1 space-y-2">
@@ -118,17 +44,31 @@ export default function Home() {
       <Header title="Active Requests" subtitle="Your ongoing breakdown requests" />
 
       <div className="p-4 max-w-md mx-auto">
-        {/* Refresh button */}
+        {/* Toolbar */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {activeRequests.length} request{activeRequests.length !== 1 ? 's' : ''}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              {activeRequests.length} request{activeRequests.length !== 1 ? 's' : ''}
+            </h2>
+            {/* Live indicator */}
+            <div
+              className={cn(
+                'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+                isWsConnected
+                  ? 'bg-success/15 text-success'
+                  : 'bg-muted text-muted-foreground'
+              )}
+              title={isWsConnected ? 'Live updates active' : 'Polling mode'}
+            >
+              <Wifi className="w-3 h-3" />
+              {isWsConnected ? 'Live' : 'Polling'}
+            </div>
+          </div>
           <button
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors disabled:opacity-50"
+            onClick={refresh}
+            className="flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
           >
-            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+            <RefreshCw className="w-4 h-4" />
             Refresh
           </button>
         </div>
@@ -147,9 +87,7 @@ export default function Home() {
             <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-muted flex items-center justify-center">
               <Inbox className="w-10 h-10 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">
-              No active requests
-            </h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">No active requests</h3>
             <p className="text-muted-foreground mb-6">
               Create a new request when you need assistance
             </p>
@@ -163,11 +101,7 @@ export default function Home() {
         ) : (
           <div className="space-y-3">
             {activeRequests.map((request, index) => (
-              <RequestCard
-                key={request.id}
-                request={request}
-                index={index}
-              />
+              <RequestCard key={request.id} request={request} index={index} />
             ))}
           </div>
         )}

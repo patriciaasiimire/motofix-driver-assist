@@ -4,12 +4,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { BottomNav } from "@/components/BottomNav";
 import { PrivateRoute } from "@/components/PrivateRoute";
+import { NetworkBanner } from "@/components/NetworkBanner";
+import { RequestProvider } from "@/contexts/RequestContext";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import RequestsList from "./pages/RequestsList";
 import CreateRequest from "./pages/CreateRequest";
 import Profile from "./pages/Profile";
+import RequestDetail from "./pages/RequestDetail";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -20,6 +23,7 @@ function AppContent() {
 
   return (
     <>
+      <NetworkBanner />
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/login" element={<Login />} />
@@ -28,6 +32,14 @@ function AppContent() {
           element={
             <PrivateRoute>
               <Home />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/requests/:id"
+          element={
+            <PrivateRoute>
+              <RequestDetail />
             </PrivateRoute>
           }
         />
@@ -65,9 +77,9 @@ function AppContent() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster 
-        position="top-center" 
-        richColors 
+      <Toaster
+        position="top-center"
+        richColors
         toastOptions={{
           style: {
             background: 'hsl(220 18% 10%)',
@@ -77,7 +89,9 @@ const App = () => (
         }}
       />
       <BrowserRouter>
-        <AppContent />
+        <RequestProvider>
+          <AppContent />
+        </RequestProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
