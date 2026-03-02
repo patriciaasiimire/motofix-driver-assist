@@ -238,10 +238,17 @@ export default function CreateRequest() {
 
     setIsLoading(true);
     try {
+      // If GPS gave coordinates and reverse geocoding resolved a name, encode both:
+      // "Nansana (0.369382, 32.513763)" — mechanic sees the name, coords available as subtitle.
+      const locationToSend =
+        friendlyAddress && addressStatus === 'done' && isCoordString(location.trim())
+          ? `${friendlyAddress} (${location.trim()})`
+          : location.trim();
+
       console.log('📤 Submitting request:', {
         customer_name: user?.full_name,
         issue: issue.trim(),
-        location: location.trim(),
+        location: locationToSend,
         phone: user?.phone,
         hasMedia: mediaFiles.length > 0,
       });
@@ -253,7 +260,7 @@ export default function CreateRequest() {
         const formData = new FormData();
         formData.append('customer_name', user?.full_name || 'Driver');
         formData.append('service_type', 'Other');
-        formData.append('location', location.trim());
+        formData.append('location', locationToSend);
         formData.append('description', issue.trim());
         formData.append('phone', user?.phone || '');
         
@@ -268,7 +275,7 @@ export default function CreateRequest() {
         response = await requestsService.create({
           customer_name: user?.full_name || 'Driver',
           service_type: 'Other',
-          location: location.trim(),
+          location: locationToSend,
           description: issue.trim(),
           phone: user?.phone || '',
         });
