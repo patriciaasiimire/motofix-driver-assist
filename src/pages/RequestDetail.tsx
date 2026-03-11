@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, MapPin, Wrench, Clock, Phone, Loader2,
@@ -11,40 +11,43 @@ import { reverseGeocode, isCoordString, parseCoordString } from '@/utils/geocode
 import { useRequests, Request } from '@/contexts/RequestContext';
 import { cn } from '@/lib/utils';
 
-// ─── Status timeline config ─────────────────────────────────────────────────
+// ─── Status timeline ──────────────────────────────────────────────────────────
 const STATUS_STEPS = [
-  { key: 'pending',   label: 'Request Sent',        desc: 'Looking for a nearby mechanic' },
-  { key: 'accepted',  label: 'Mechanic Accepted',    desc: 'A mechanic is preparing to come' },
-  { key: 'en_route',  label: 'Mechanic On the Way',  desc: 'Your mechanic is heading to you' },
-  { key: 'completed', label: 'Job Completed',         desc: 'Repair is done' },
+  { key: 'pending',   label: 'Request Sent',       desc: 'Looking for a nearby mechanic' },
+  { key: 'accepted',  label: 'Mechanic Accepted',   desc: 'Mechanic is on their way' },
+  { key: 'en_route',  label: 'Mechanic On the Way', desc: 'Your mechanic is heading to you' },
+  { key: 'completed', label: 'Job Completed',        desc: 'Repair is done' },
 ] as const;
 
 const STATUS_ORDER = ['pending', 'accepted', 'en_route', 'completed'] as const;
 type StatusKey = (typeof STATUS_ORDER)[number];
 
-function stepIndex(status: string): number {
-  return STATUS_ORDER.indexOf(status as StatusKey);
+function stepIndex(s: string) {
+  return STATUS_ORDER.indexOf(s as StatusKey);
 }
 
-// ─── OpenStreetMap embed ─────────────────────────────────────────────────────
+// ─── Map ──────────────────────────────────────────────────────────────────────
 function LocationMap({ lat, lon }: { lat: number; lon: number }) {
   const delta = 0.015;
   const bbox = `${lon - delta},${lat - delta},${lon + delta},${lat + delta}`;
-  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`;
   return (
     <div className="rounded-2xl overflow-hidden border border-border/50 bg-muted" style={{ height: 220 }}>
-      <iframe title="Location Map" src={src} width="100%" height="220" style={{ border: 0 }} loading="lazy" referrerPolicy="no-referrer" />
+      <iframe
+        title="Location Map"
+        src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`}
+        width="100%" height="220" style={{ border: 0 }} loading="lazy" referrerPolicy="no-referrer"
+      />
     </div>
   );
 }
 
-// ─── Status badge ────────────────────────────────────────────────────────────
+// ─── Status badge ─────────────────────────────────────────────────────────────
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  pending:   { label: 'Pending',     className: 'bg-warning/20 text-warning border-warning/30' },
-  accepted:  { label: 'Accepted',    className: 'bg-primary/20 text-primary border-primary/30' },
-  en_route:  { label: 'En Route',    className: 'bg-accent/20 text-accent border-accent/30' },
-  completed: { label: 'Completed',   className: 'bg-success/20 text-success border-success/30' },
-  cancelled: { label: 'Cancelled',   className: 'bg-destructive/20 text-destructive border-destructive/30' },
+  pending:   { label: 'Pending',   className: 'bg-warning/20 text-warning border-warning/30' },
+  accepted:  { label: 'Accepted',  className: 'bg-primary/20 text-primary border-primary/30' },
+  en_route:  { label: 'En Route',  className: 'bg-accent/20 text-accent border-accent/30' },
+  completed: { label: 'Completed', className: 'bg-success/20 text-success border-success/30' },
+  cancelled: { label: 'Cancelled', className: 'bg-destructive/20 text-destructive border-destructive/30' },
 };
 
 interface QuoteRecord {
@@ -57,7 +60,7 @@ interface QuoteRecord {
   disbursement_status: string;
 }
 
-// ─── Main component ──────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function RequestDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -69,17 +72,16 @@ export default function RequestDetail() {
   const [displayLocation, setDisplayLocation] = useState('');
   const [mapCoords, setMapCoords] = useState<{ lat: number; lon: number } | null>(null);
 
-  // Quote state
+  // Quote & payment state
   const [quote, setQuote] = useState<QuoteRecord | null>(null);
   const [isApprovingQuote, setIsApprovingQuote] = useState(false);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
-
-  // Payment state
   const [momoPhone, setMomoPhone] = useState('');
   const [isPaying, setIsPaying] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
 
-  // Load from context first (instant), then fetch fresh from API
+  const quotePollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const paymentPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Load request ──────────────────────────────────────────────────────────
   useEffect(() => {
     const cached = requests.find((r) => String(r.id) === id);
     if (cached) { setRequest(cached); setIsLoading(false); }
@@ -89,13 +91,20 @@ export default function RequestDetail() {
       .catch(() => { if (!cached) setIsLoading(false); });
   }, [id, requests]);
 
-  // Sync request from context updates in real-time
   useEffect(() => {
     const live = requests.find((r) => String(r.id) === id);
     if (live) setRequest(live);
   }, [requests, id]);
 
-  // Reverse geocode + parse coordinates for map
+  // Pre-fill MoMo number from stored user profile
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('motofix_user') || '{}');
+      if (user?.phone) setMomoPhone(user.phone.replace('+', ''));
+    } catch {}
+  }, []);
+
+  // ── Geocode ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!request?.location) return;
     const loc = request.location.trim();
@@ -112,36 +121,57 @@ export default function RequestDetail() {
     }
   }, [request?.location]);
 
-  // Poll for quote once mechanic is en_route or arrived
+  // ── Poll for quote every 5 s once mechanic accepted ───────────────────────
   const fetchQuote = useCallback(() => {
     if (!id) return;
     paymentsService.getQuote(id)
       .then((res) => setQuote(res.data))
-      .catch(() => {/* no quote yet */});
+      .catch(() => {/* no quote yet — keep polling */});
   }, [id]);
 
   useEffect(() => {
     if (!request) return;
-    if (request.status === 'en_route' || request.status === 'accepted' || request.status === 'completed') {
-      fetchQuote();
-      const interval = setInterval(fetchQuote, 15000);
-      return () => clearInterval(interval);
+    const status = request.status;
+
+    // Start quote polling as soon as job is accepted (quote was submitted at accept time)
+    if (status === 'accepted' || status === 'en_route') {
+      fetchQuote(); // immediate first fetch
+      quotePollingRef.current = setInterval(fetchQuote, 5000);
+      return () => {
+        if (quotePollingRef.current) clearInterval(quotePollingRef.current);
+      };
     }
+
+    // Stop polling once completed (fetch once to show final state)
+    if (status === 'completed') {
+      fetchQuote();
+    }
+
+    return () => {
+      if (quotePollingRef.current) clearInterval(quotePollingRef.current);
+    };
   }, [request?.status, fetchQuote]);
 
-  // Poll payment status after collection is initiated
+  // ── Poll payment status after collection initiated ────────────────────────
   useEffect(() => {
     if (!id || !quote || quote.collection_status !== 'initiated') return;
-    const interval = setInterval(() => {
+    paymentPollingRef.current = setInterval(() => {
       paymentsService.getStatus(id).then((res) => {
-        setQuote(res.data);
-        setPaymentStatus(res.data.collection_status);
-        if (res.data.collection_status === 'success') clearInterval(interval);
+        const updated: QuoteRecord = res.data;
+        setQuote(updated);
+        if (updated.collection_status === 'success') {
+          if (paymentPollingRef.current) clearInterval(paymentPollingRef.current);
+          toast.success('Payment confirmed! The mechanic will continue to your location.');
+        } else if (updated.collection_status === 'failed') {
+          if (paymentPollingRef.current) clearInterval(paymentPollingRef.current);
+          toast.error('Payment failed. Please try again.');
+        }
       }).catch(() => {});
     }, 5000);
-    return () => clearInterval(interval);
+    return () => { if (paymentPollingRef.current) clearInterval(paymentPollingRef.current); };
   }, [id, quote?.collection_status]);
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const canCall = request?.status === 'accepted' || request?.status === 'en_route';
 
   const handleCall = async () => {
@@ -149,8 +179,7 @@ export default function RequestDetail() {
     setIsCalling(true);
     try {
       const res = await requestsService.getCallPartner(id);
-      const phone = res.data.phone;
-      if (phone) window.location.href = `tel:${phone}`;
+      if (res.data.phone) window.location.href = `tel:${res.data.phone}`;
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Unable to call mechanic');
     } finally {
@@ -159,17 +188,14 @@ export default function RequestDetail() {
   };
 
   const handleApproveQuote = async () => {
-    if (!id || !quote) return;
+    if (!id) return;
     setIsApprovingQuote(true);
-    setQuoteError(null);
     try {
       await paymentsService.approveQuote(id);
-      setQuote({ ...quote, quote_approved: true });
-      toast.success('Quote approved! The mechanic can now start working.');
+      setQuote((q) => q ? { ...q, quote_approved: true } : q);
+      toast.success('Quote approved!');
     } catch (err: any) {
-      const msg = err.response?.data?.detail || 'Failed to approve quote';
-      setQuoteError(msg);
-      toast.error(msg);
+      toast.error(err.response?.data?.detail || 'Failed to approve quote');
     } finally {
       setIsApprovingQuote(false);
     }
@@ -177,14 +203,13 @@ export default function RequestDetail() {
 
   const handlePay = async () => {
     if (!id || !quote) return;
-    const phone = momoPhone.trim();
+    const phone = momoPhone.trim().replace(/\s+/g, '');
     if (!phone) { toast.error('Enter your MTN MoMo phone number'); return; }
     setIsPaying(true);
     try {
-      const res = await paymentsService.collect(id, phone);
-      setPaymentStatus('initiated');
+      await paymentsService.collect(id, phone);
       setQuote((q) => q ? { ...q, collection_status: 'initiated' } : q);
-      toast.success(`Payment of UGX ${quote.quoted_amount.toLocaleString()} initiated. Check your phone.`);
+      toast.success('Payment initiated — approve the prompt on your phone');
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Payment failed. Please try again.');
     } finally {
@@ -192,7 +217,7 @@ export default function RequestDetail() {
     }
   };
 
-  // ── Loading skeleton ──────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background pb-24">
@@ -203,10 +228,8 @@ export default function RequestDetail() {
         </header>
         <div className="p-4 max-w-md mx-auto space-y-4 animate-pulse">
           <div className="h-6 bg-muted rounded w-40" />
-          <div className="h-4 bg-muted rounded w-24" />
           <div className="h-[220px] bg-muted rounded-2xl" />
           <div className="h-20 bg-muted rounded-2xl" />
-          <div className="h-32 bg-muted rounded-2xl" />
         </div>
       </div>
     );
@@ -226,23 +249,20 @@ export default function RequestDetail() {
   const badge = STATUS_BADGE[request.status] ?? STATUS_BADGE.pending;
   const currentStep = stepIndex(request.status);
   const isCancelled = request.status === 'cancelled';
-  const isCompleted = request.status === 'completed';
 
-  const showQuote = !!quote && (request.status === 'en_route' || request.status === 'accepted' || isCompleted);
-  const showPayment = isCompleted && quote?.quote_approved && quote.collection_status === 'pending';
-  const paymentInitiated = quote?.collection_status === 'initiated';
+  // Quote display conditions
+  const hasQuote = !!quote;
+  const quoteApproved = !!quote?.quote_approved;
+  const paymentPending = quote?.collection_status === 'initiated';
   const paymentSuccess = quote?.collection_status === 'success';
+  const showApproveButtons = hasQuote && !quoteApproved && !paymentPending && !paymentSuccess;
+  const showPayButton = hasQuote && quoteApproved && !paymentPending && !paymentSuccess;
 
   return (
     <div className="min-h-screen bg-background pb-28">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-card/80 backdrop-blur border-b border-border/50 px-4 py-3 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="p-2 -ml-2 rounded-xl hover:bg-muted transition-colors"
-          aria-label="Go back"
-        >
+        <button type="button" onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl hover:bg-muted transition-colors" aria-label="Go back">
           <ChevronLeft className="w-5 h-5 text-foreground" />
         </button>
         <div className="flex-1 min-w-0">
@@ -263,7 +283,7 @@ export default function RequestDetail() {
           </div>
         )}
 
-        {/* Location & Description */}
+        {/* Location + description */}
         <div className="glass-card rounded-2xl p-4 space-y-3 animate-slide-up" style={{ animationDelay: '0.05s' }}>
           <div className="flex items-start gap-3">
             <MapPin className="w-5 h-5 text-primary shrink-0 mt-0.5" />
@@ -288,8 +308,7 @@ export default function RequestDetail() {
                 <p className="text-xs text-muted-foreground mb-0.5">Requested at</p>
                 <p className="text-sm text-foreground">
                   {new Date(request.created_at).toLocaleString('en-UG', {
-                    day: 'numeric', month: 'short', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
+                    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
                   })}
                 </p>
               </div>
@@ -315,102 +334,104 @@ export default function RequestDetail() {
           </div>
         )}
 
-        {/* Quote Card */}
-        {showQuote && (
-          <div className="glass-card rounded-2xl p-4 animate-slide-up" style={{ animationDelay: '0.12s' }}>
+        {/* ── Quote card ──────────────────────────────────────────────────── */}
+        {hasQuote && (
+          <div className="glass-card rounded-2xl p-4 animate-slide-up border-2 border-primary/20" style={{ animationDelay: '0.12s' }}>
             <div className="flex items-center gap-2 mb-3">
               <DollarSign className="w-5 h-5 text-primary shrink-0" />
-              <p className="text-sm font-semibold text-foreground">Mechanic's Quote</p>
+              <p className="text-sm font-bold text-foreground">
+                Mechanic quoted{' '}
+                <span className="text-primary text-base">UGX {quote!.quoted_amount.toLocaleString()}</span>
+              </p>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Quoted price</span>
-                <span className="text-xl font-bold text-foreground">
-                  UGX {quote!.quoted_amount.toLocaleString()}
-                </span>
+            {/* Payment success */}
+            {paymentSuccess && (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-success/10 border border-success/20">
+                <CheckCircle2 className="w-6 h-6 text-success shrink-0" />
+                <div>
+                  <p className="text-sm font-bold text-success">Payment confirmed</p>
+                  <p className="text-xs text-muted-foreground">Mechanic payout is being processed</p>
+                </div>
               </div>
+            )}
 
-              {paymentSuccess ? (
-                <div className="flex items-center gap-2 mt-3 p-3 rounded-xl bg-success/10 border border-success/20">
-                  <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-success">Payment received</p>
-                    <p className="text-xs text-muted-foreground">Mechanic payout is being processed</p>
-                  </div>
+            {/* Payment pending (awaiting MoMo callback) */}
+            {paymentPending && (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20">
+                <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
+                <div>
+                  <p className="text-sm font-bold text-foreground">Awaiting payment</p>
+                  <p className="text-xs text-muted-foreground">Approve the prompt on your phone</p>
                 </div>
-              ) : paymentInitiated ? (
-                <div className="flex items-center gap-2 mt-3 p-3 rounded-xl bg-primary/10 border border-primary/20">
-                  <Loader2 className="w-4 h-4 text-primary animate-spin shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">Payment pending</p>
-                    <p className="text-xs text-muted-foreground">Approve the prompt on your phone</p>
-                  </div>
-                </div>
-              ) : quote!.quote_approved ? (
-                <div className="flex items-center gap-1.5 mt-1 text-xs text-success">
-                  <Check className="w-3.5 h-3.5" /> You approved this quote
-                </div>
-              ) : (
-                <div className="flex gap-2 mt-3">
+              </div>
+            )}
+
+            {/* Approve / Reject */}
+            {showApproveButtons && (
+              <>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Review the price and approve to proceed.
+                </p>
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={handleApproveQuote}
                     disabled={isApprovingQuote}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-success text-success-foreground font-semibold text-sm disabled:opacity-60"
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-success text-success-foreground font-bold text-sm disabled:opacity-60"
                   >
                     {isApprovingQuote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    Approve
+                    Approve Quote
                   </button>
                   <button
                     type="button"
-                    onClick={() => toast.info('Quote rejected. The mechanic will revise it.')}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-destructive/10 text-destructive font-semibold text-sm border border-destructive/20"
+                    onClick={() => toast.info('Rejected. The mechanic will be notified.')}
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-destructive/10 text-destructive font-bold text-sm border border-destructive/20"
                   >
                     <X className="w-4 h-4" /> Reject
                   </button>
                 </div>
-              )}
+              </>
+            )}
 
-              {quoteError && (
-                <p className="text-xs text-destructive mt-1">{quoteError}</p>
-              )}
-            </div>
+            {/* Approved but not yet paid */}
+            {quoteApproved && !paymentPending && !paymentSuccess && (
+              <p className="text-xs text-success flex items-center gap-1.5 mb-1">
+                <Check className="w-3.5 h-3.5" /> You approved this quote
+              </p>
+            )}
           </div>
         )}
 
-        {/* Payment Card – shown after job completed + quote approved */}
-        {showPayment && (
+        {/* ── Payment card ────────────────────────────────────────────────── */}
+        {showPayButton && (
           <div className="glass-card rounded-2xl p-4 animate-slide-up" style={{ animationDelay: '0.14s' }}>
             <div className="flex items-center gap-2 mb-3">
               <Smartphone className="w-5 h-5 text-primary shrink-0" />
-              <p className="text-sm font-semibold text-foreground">Pay with MTN MoMo</p>
+              <p className="text-sm font-bold text-foreground">Pay with MTN MoMo</p>
             </div>
             <p className="text-xs text-muted-foreground mb-3">
-              Enter the MTN MoMo number to charge for{' '}
-              <span className="font-semibold text-foreground">
-                UGX {quote!.quoted_amount.toLocaleString()}
-              </span>
+              Enter the MTN Mobile Money number to pay{' '}
+              <span className="font-bold text-foreground">UGX {quote!.quoted_amount.toLocaleString()}</span>
             </p>
             <div className="space-y-3">
-              <input
-                type="tel"
-                value={momoPhone}
-                onChange={(e) => setMomoPhone(e.target.value)}
-                placeholder="e.g. 0771234567"
-                className="w-full px-4 py-3 bg-muted border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-semibold">+256</span>
+                <input
+                  type="tel"
+                  value={momoPhone}
+                  onChange={(e) => setMomoPhone(e.target.value)}
+                  placeholder="771234567"
+                  className="w-full pl-14 pr-4 py-3 bg-muted border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
               <button
                 type="button"
                 onClick={handlePay}
                 disabled={isPaying || !momoPhone.trim()}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 shadow-sm"
+                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-primary text-primary-foreground font-bold text-base disabled:opacity-60 shadow-sm glow-primary"
               >
-                {isPaying ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <DollarSign className="w-4 h-4" />
-                )}
+                {isPaying ? <Loader2 className="w-5 h-5 animate-spin" /> : <DollarSign className="w-5 h-5" />}
                 {isPaying ? 'Processing…' : `Pay UGX ${quote!.quoted_amount.toLocaleString()}`}
               </button>
             </div>
@@ -419,7 +440,7 @@ export default function RequestDetail() {
 
         {/* Status Timeline */}
         {!isCancelled && (
-          <div className="glass-card rounded-2xl p-4 animate-slide-up" style={{ animationDelay: '0.15s' }}>
+          <div className="glass-card rounded-2xl p-4 animate-slide-up" style={{ animationDelay: '0.16s' }}>
             <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-4">Progress</p>
             <div className="space-y-0">
               {STATUS_STEPS.map((step, i) => {
@@ -451,9 +472,9 @@ export default function RequestDetail() {
           </div>
         )}
 
-        {/* Cancelled notice */}
+        {/* Cancelled */}
         {isCancelled && (
-          <div className="glass-card rounded-2xl p-4 border-destructive/30 bg-destructive/10 animate-slide-up" style={{ animationDelay: '0.15s' }}>
+          <div className="glass-card rounded-2xl p-4 border-destructive/30 bg-destructive/10 animate-slide-up" style={{ animationDelay: '0.16s' }}>
             <div className="flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-destructive shrink-0" />
               <p className="text-sm text-foreground">This request has been cancelled.</p>
@@ -462,7 +483,7 @@ export default function RequestDetail() {
         )}
       </div>
 
-      {/* Call button — fixed at bottom */}
+      {/* Call button */}
       {canCall && (
         <div className="fixed bottom-20 inset-x-0 px-4 max-w-md mx-auto">
           <button
