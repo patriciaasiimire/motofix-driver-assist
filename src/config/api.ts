@@ -86,20 +86,23 @@ addAuthInterceptor(requestsApi);
 
 // Auth API functions
 export const authService = {
-  sendOtp: (phone: string) => 
+  sendOtp: (phone: string) =>
     authApi.post('/auth/send-otp', { phone }),
-  
+
   login: (phone: string, otp: string, fullName?: string) =>
-    authApi.post('/auth/login', { 
-      phone, 
-      otp, 
+    authApi.post('/auth/login', {
+      phone,
+      otp,
       full_name: fullName,
-      role: 'driver' 
+      role: 'driver'
     }),
-  
+
   logout: () => authApi.post('/auth/logout'),
-  
+
   getMe: () => authApi.get('/auth/me'),
+
+  updateProfile: (data: { full_name?: string; number_plate?: string }) =>
+    authApi.patch('/users/me', data),
 };
 
 // Requests API functions

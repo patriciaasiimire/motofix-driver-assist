@@ -124,9 +124,14 @@ export default function Login() {
 
     setIsLoading(true);
     try {
-      await login(phone, otp, isNewUser ? fullName : undefined);
+      const userData = await login(phone, otp, isNewUser ? fullName : undefined);
       toast.success('Welcome to Motofix!');
-      navigate('/requests', { replace: true });
+      // If the driver hasn't completed their profile yet, send them to onboarding
+      if (!userData?.full_name || !userData?.number_plate) {
+        navigate('/onboarding', { replace: true });
+      } else {
+        navigate('/requests', { replace: true });
+      }
     } catch (error: any) {
       const message = error.response?.data?.detail || 'Invalid OTP';
       toast.error(message);

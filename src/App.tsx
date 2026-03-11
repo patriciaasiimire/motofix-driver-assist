@@ -8,6 +8,7 @@ import { NetworkBanner } from "@/components/NetworkBanner";
 import { RequestProvider } from "@/contexts/RequestContext";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
+import Onboarding from "./pages/Onboarding";
 import Home from "./pages/Home";
 import RequestsList from "./pages/RequestsList";
 import CreateRequest from "./pages/CreateRequest";
@@ -19,7 +20,7 @@ const queryClient = new QueryClient();
 
 function AppContent() {
   const location = useLocation();
-  const showBottomNav = !['/login', '/'].includes(location.pathname);
+  const showBottomNav = !['/login', '/', '/onboarding'].includes(location.pathname);
 
   return (
     <>
@@ -27,6 +28,14 @@ function AppContent() {
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/login" element={<Login />} />
+        <Route
+          path="/onboarding"
+          element={
+            <PrivateRoute>
+              <Onboarding />
+            </PrivateRoute>
+          }
+        />
         <Route
           path="/requests"
           element={
