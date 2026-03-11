@@ -58,12 +58,14 @@ export function LocationPicker({ onLocationChange }: LocationPickerProps) {
 
     const map = L.map(mapContainerRef.current, {
       center: [defaultLat, defaultLng],
-      zoom: 15,
+      zoom: 16,
       zoomControl: true,
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 20,
     }).addTo(map);
 
     const marker = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(map);
@@ -107,8 +109,7 @@ export function LocationPicker({ onLocationChange }: LocationPickerProps) {
     <div className="space-y-2">
       <div
         ref={mapContainerRef}
-        className="w-full rounded-xl overflow-hidden border-2 border-border"
-        style={{ height: 200 }}
+        className="w-full rounded-xl overflow-hidden border-2 border-border h-[300px]"
       />
       <div className="text-sm text-muted-foreground flex items-start gap-2 min-h-[1.5rem]">
         {addressStatus === 'loading' ? (
