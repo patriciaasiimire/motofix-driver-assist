@@ -139,7 +139,7 @@ export const paymentsService = {
     requestsApi.post(`/payments/approve/${requestId}`),
 
   collect: (requestId: string, driverPhone: string) =>
-    requestsApi.post(`/payments/collect/${requestId}`, { driver_phone: driverPhone }),
+    requestsApi.post(`/payments/collect/${requestId}`, { phone: driverPhone }),
 
   getStatus: (requestId: string) =>
     requestsApi.get(`/payments/status/${requestId}`),

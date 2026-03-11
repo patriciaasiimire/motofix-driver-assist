@@ -260,6 +260,90 @@ export default function RequestDetail() {
 
   return (
     <div className="min-h-screen bg-background pb-28">
+
+      {/* ── Quote modal overlay ────────────────────────────────────────── */}
+      {hasQuote && !paymentSuccess && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm px-4 pb-6">
+          <div className="w-full max-w-md bg-card rounded-3xl p-6 shadow-2xl border border-border animate-slide-up">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <DollarSign className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Your mechanic quoted</p>
+                <p className="text-xl font-bold text-foreground">UGX {quote!.quoted_amount.toLocaleString()}</p>
+              </div>
+            </div>
+
+            {/* Payment pending */}
+            {paymentPending && (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20 mb-2">
+                <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
+                <div>
+                  <p className="text-sm font-bold text-foreground">Awaiting payment</p>
+                  <p className="text-xs text-muted-foreground">Approve the MoMo prompt on your phone</p>
+                </div>
+              </div>
+            )}
+
+            {/* Approve / Reject */}
+            {showApproveButtons && (
+              <>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Approve the price to continue. The mechanic is waiting.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toast.info('Rejected. The mechanic will be notified.')}
+                    className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-destructive/10 text-destructive font-bold text-sm border border-destructive/20"
+                  >
+                    <X className="w-4 h-4" /> Reject
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApproveQuote}
+                    disabled={isApprovingQuote}
+                    className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl bg-success text-success-foreground font-bold text-sm disabled:opacity-60"
+                  >
+                    {isApprovingQuote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    Approve
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Pay with MoMo */}
+            {showPayButton && (
+              <>
+                <p className="text-xs text-success flex items-center gap-1.5 mb-4">
+                  <Check className="w-3.5 h-3.5" /> Quote approved — pay to get started
+                </p>
+                <div className="relative mb-3">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-semibold">+256</span>
+                  <input
+                    type="tel"
+                    value={momoPhone}
+                    onChange={(e) => setMomoPhone(e.target.value)}
+                    placeholder="771234567"
+                    className="w-full pl-14 pr-4 py-3 bg-muted border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePay}
+                  disabled={isPaying || !momoPhone.trim()}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-base disabled:opacity-60 shadow-sm"
+                >
+                  {isPaying ? <Loader2 className="w-5 h-5 animate-spin" /> : <Smartphone className="w-5 h-5" />}
+                  {isPaying ? 'Processing…' : `Pay UGX ${quote!.quoted_amount.toLocaleString()}`}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="sticky top-0 z-10 bg-card/80 backdrop-blur border-b border-border/50 px-4 py-3 flex items-center gap-3">
         <button type="button" onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-xl hover:bg-muted transition-colors" aria-label="Go back">
@@ -334,106 +418,13 @@ export default function RequestDetail() {
           </div>
         )}
 
-        {/* ── Quote card ──────────────────────────────────────────────────── */}
-        {hasQuote && (
-          <div className="glass-card rounded-2xl p-4 animate-slide-up border-2 border-primary/20" style={{ animationDelay: '0.12s' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <DollarSign className="w-5 h-5 text-primary shrink-0" />
-              <p className="text-sm font-bold text-foreground">
-                Mechanic quoted{' '}
-                <span className="text-primary text-base">UGX {quote!.quoted_amount.toLocaleString()}</span>
-              </p>
-            </div>
-
-            {/* Payment success */}
-            {paymentSuccess && (
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-success/10 border border-success/20">
-                <CheckCircle2 className="w-6 h-6 text-success shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-success">Payment confirmed</p>
-                  <p className="text-xs text-muted-foreground">Mechanic payout is being processed</p>
-                </div>
-              </div>
-            )}
-
-            {/* Payment pending (awaiting MoMo callback) */}
-            {paymentPending && (
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20">
-                <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
-                <div>
-                  <p className="text-sm font-bold text-foreground">Awaiting payment</p>
-                  <p className="text-xs text-muted-foreground">Approve the prompt on your phone</p>
-                </div>
-              </div>
-            )}
-
-            {/* Approve / Reject */}
-            {showApproveButtons && (
-              <>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Review the price and approve to proceed.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleApproveQuote}
-                    disabled={isApprovingQuote}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-success text-success-foreground font-bold text-sm disabled:opacity-60"
-                  >
-                    {isApprovingQuote ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    Approve Quote
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toast.info('Rejected. The mechanic will be notified.')}
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-destructive/10 text-destructive font-bold text-sm border border-destructive/20"
-                  >
-                    <X className="w-4 h-4" /> Reject
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Approved but not yet paid */}
-            {quoteApproved && !paymentPending && !paymentSuccess && (
-              <p className="text-xs text-success flex items-center gap-1.5 mb-1">
-                <Check className="w-3.5 h-3.5" /> You approved this quote
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* ── Payment card ────────────────────────────────────────────────── */}
-        {showPayButton && (
-          <div className="glass-card rounded-2xl p-4 animate-slide-up" style={{ animationDelay: '0.14s' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Smartphone className="w-5 h-5 text-primary shrink-0" />
-              <p className="text-sm font-bold text-foreground">Pay with MTN MoMo</p>
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              Enter the MTN Mobile Money number to pay{' '}
-              <span className="font-bold text-foreground">UGX {quote!.quoted_amount.toLocaleString()}</span>
-            </p>
-            <div className="space-y-3">
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-semibold">+256</span>
-                <input
-                  type="tel"
-                  value={momoPhone}
-                  onChange={(e) => setMomoPhone(e.target.value)}
-                  placeholder="771234567"
-                  className="w-full pl-14 pr-4 py-3 bg-muted border border-border rounded-xl text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handlePay}
-                disabled={isPaying || !momoPhone.trim()}
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl bg-primary text-primary-foreground font-bold text-base disabled:opacity-60 shadow-sm glow-primary"
-              >
-                {isPaying ? <Loader2 className="w-5 h-5 animate-spin" /> : <DollarSign className="w-5 h-5" />}
-                {isPaying ? 'Processing…' : `Pay UGX ${quote!.quoted_amount.toLocaleString()}`}
-              </button>
+        {/* Payment confirmed inline banner */}
+        {paymentSuccess && (
+          <div className="glass-card rounded-2xl p-4 animate-slide-up flex items-center gap-3 border border-success/30 bg-success/10" style={{ animationDelay: '0.12s' }}>
+            <CheckCircle2 className="w-6 h-6 text-success shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-success">Payment confirmed</p>
+              <p className="text-xs text-muted-foreground">UGX {quote!.quoted_amount.toLocaleString()} — mechanic payout is being processed</p>
             </div>
           </div>
         )}
