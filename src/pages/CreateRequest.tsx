@@ -1,14 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Mic, Camera, Paperclip, Send, Loader2, LocateFixed, X, Play, Pause, Eye } from 'lucide-react';
+import { MapPin, Mic, Camera, Paperclip, Send, Loader2, X, Play, Pause, Eye } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { requestsService } from '@/config/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { reverseGeocode, isCoordString, parseCoordString } from '@/utils/geocode';
+import { LocationPicker } from '@/components/LocationPicker';
 
 interface MediaFileWithPreview extends File {
   preview?: string; // For images
@@ -18,9 +17,6 @@ export default function CreateRequest() {
   const [location, setLocation] = useState('');
   const [issue, setIssue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(true);
-  const [friendlyAddress, setFriendlyAddress] = useState<string | null>(null);
-  const [addressStatus, setAddressStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [mediaFiles, setMediaFiles] = useState<MediaFileWithPreview[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<number | null>(null);
@@ -34,91 +30,6 @@ export default function CreateRequest() {
 
   const { user } = useAuth();
   const navigate = useNavigate();
-
-  // Auto-detect location on mount
-  useEffect(() => {
-    autoDetectLocation();
-  }, []);
-
-  // Reverse geocode for display only when location is coordinates (debounced 1s)
-  useEffect(() => {
-    const loc = location.trim();
-    if (!isCoordString(loc)) {
-      setFriendlyAddress(null);
-      setAddressStatus('idle');
-      return;
-    }
-    const coords = parseCoordString(loc);
-    if (!coords) return;
-
-    const t = setTimeout(() => {
-      setAddressStatus('loading');
-      reverseGeocode(coords.lat, coords.lng)
-        .then((address) => {
-          if (address) {
-            setFriendlyAddress(address);
-            setAddressStatus('done');
-          } else {
-            setFriendlyAddress('Near your current location');
-            setAddressStatus('error');
-            toast.error("Couldn't find address — type manually");
-          }
-        })
-        .catch(() => {
-          setFriendlyAddress('Near your current location');
-          setAddressStatus('error');
-          toast.error("Couldn't find address — type manually");
-        });
-    }, 1000);
-
-    return () => clearTimeout(t);
-  }, [location]);
-
-  const autoDetectLocation = () => {
-    if (!navigator.geolocation) {
-      setIsGettingLocation(false);
-      return;
-    }
-
-    setIsGettingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
-        console.log('✅ Location auto-detected:', location);
-        setIsGettingLocation(false);
-      },
-      (error) => {
-        console.warn('⚠️ Location detection failed:', error.message);
-        setIsGettingLocation(false);
-      },
-      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-    );
-  };
-
-  const handleGetLocation = () => {
-    if (!navigator.geolocation) {
-      toast.error('Geolocation is not supported by your browser');
-      return;
-    }
-
-    setIsGettingLocation(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
-        toast.success('Location detected!');
-        console.log('✅ Location updated:', location);
-        setIsGettingLocation(false);
-      },
-      (error) => {
-        toast.error('Unable to get your location. Please enter manually.');
-        console.error('❌ Location error:', error);
-        setIsGettingLocation(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
 
   const startRecording = async () => {
     try {
@@ -238,12 +149,7 @@ export default function CreateRequest() {
 
     setIsLoading(true);
     try {
-      // If GPS gave coordinates and reverse geocoding resolved a name, encode both:
-      // "Nansana (0.369382, 32.513763)" — mechanic sees the name, coords available as subtitle.
-      const locationToSend =
-        friendlyAddress && addressStatus === 'done' && isCoordString(location.trim())
-          ? `${friendlyAddress} (${location.trim()})`
-          : location.trim();
+      const locationToSend = location.trim();
 
       console.log('📤 Submitting request:', {
         customer_name: user?.full_name,
@@ -313,42 +219,10 @@ export default function CreateRequest() {
           <label className="text-sm font-medium text-foreground flex items-center gap-2">
             <MapPin className="w-4 h-4 text-primary" />
             Your Location
-            {isGettingLocation && <Loader2 className="w-3 h-3 animate-spin text-primary/60" />}
           </label>
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              placeholder={isGettingLocation ? "Detecting..." : "Enter location or landmark"}
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="flex-1 min-h-[2.75rem]"
-              disabled={isGettingLocation}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={handleGetLocation}
-              disabled={isGettingLocation}
-              className="shrink-0 min-h-[2.75rem] min-w-[2.75rem]"
-            >
-              <LocateFixed className={cn("w-5 h-5", isGettingLocation && "animate-pulse")} />
-            </Button>
-          </div>
-          {addressStatus === 'loading' && (
-            <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-              Finding address...
-            </p>
-          )}
-          {addressStatus === 'done' && friendlyAddress && (
-            <p className="text-sm text-muted-foreground line-clamp-2" title={friendlyAddress}>
-              📍 {friendlyAddress}
-            </p>
-          )}
-          {addressStatus === 'error' && friendlyAddress && (
-            <p className="text-sm text-muted-foreground">📍 {friendlyAddress}</p>
-          )}
+          <LocationPicker
+            onLocationChange={(_lat, _lng, addr) => setLocation(addr)}
+          />
         </div>
 
         {/* Issue Description */}
