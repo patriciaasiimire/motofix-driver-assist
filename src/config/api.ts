@@ -129,3 +129,18 @@ export const requestsService = {
   getCallPartner: (id: string) =>
     requestsApi.get<{ phone: string }>(`/requests/${id}/call-partner`),
 };
+
+// Payment API functions
+export const paymentsService = {
+  getQuote: (requestId: string) =>
+    requestsApi.get(`/payments/quote/${requestId}`),
+
+  approveQuote: (requestId: string) =>
+    requestsApi.post(`/payments/approve/${requestId}`),
+
+  collect: (requestId: string, driverPhone: string) =>
+    requestsApi.post(`/payments/collect/${requestId}`, { driver_phone: driverPhone }),
+
+  getStatus: (requestId: string) =>
+    requestsApi.get(`/payments/status/${requestId}`),
+};
