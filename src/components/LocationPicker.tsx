@@ -1,116 +1,103 @@
-import { useEffect, useRef, useState } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useState, useCallback } from 'react';
+import { useLoadScript, GoogleMap, Marker } from '@react-google-maps/api';
 import { Loader2 } from 'lucide-react';
 
-// Fix Vite bundler breaking Leaflet's default marker icons
-import markerIconUrl from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2xUrl from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png';
-
-L.Icon.Default.mergeOptions({
-  iconUrl: markerIconUrl,
-  iconRetinaUrl: markerIcon2xUrl,
-  shadowUrl: markerShadowUrl,
-});
-
-const GEOCODE_BASE = 'https://motofix-service-requests.onrender.com';
+const DEFAULT_CENTER = { lat: 0.3476, lng: 32.5825 }; // Kampala
+const MAP_CONTAINER_CLASS = 'w-full rounded-xl overflow-hidden border-2 border-border h-[300px]';
 
 interface LocationPickerProps {
   onLocationChange: (lat: number, lng: number, address: string) => void;
 }
 
 export function LocationPicker({ onLocationChange }: LocationPickerProps) {
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const markerRef = useRef<L.Marker | null>(null);
-
-  const [address, setAddress] = useState<string>('');
+  const [markerPos, setMarkerPos] = useState(DEFAULT_CENTER);
+  const [address, setAddress] = useState('');
   const [addressStatus, setAddressStatus] = useState<'loading' | 'done' | 'error'>('loading');
 
-  const fetchAddress = async (lat: number, lng: number) => {
-    setAddressStatus('loading');
-    try {
-      const res = await fetch(`${GEOCODE_BASE}/geocode/reverse?lat=${lat}&lon=${lng}`);
-      if (!res.ok) throw new Error('Geocode failed');
-      const data = await res.json();
-      const resolved: string =
-        data.display_name ||
-        data.address ||
-        `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-      setAddress(resolved);
-      setAddressStatus('done');
-      onLocationChange(lat, lng, resolved);
-    } catch {
-      const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-      setAddress(fallback);
-      setAddressStatus('error');
-      onLocationChange(lat, lng, fallback);
-    }
-  };
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY ?? '',
+  });
 
-  useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+  const reverseGeocode = useCallback(
+    (lat: number, lng: number) => {
+      setAddressStatus('loading');
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+        if (status === 'OK' && results?.[0]) {
+          const resolved = results[0].formatted_address;
+          setAddress(resolved);
+          setAddressStatus('done');
+          onLocationChange(lat, lng, resolved);
+        } else {
+          const fallback = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          setAddress(fallback);
+          setAddressStatus('error');
+          onLocationChange(lat, lng, fallback);
+        }
+      });
+    },
+    [onLocationChange]
+  );
 
-    // Default: Kampala centre
-    const defaultLat = 0.3476;
-    const defaultLng = 32.5825;
+  const onMapLoad = useCallback(
+    (map: google.maps.Map) => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const { latitude, longitude } = pos.coords;
+            const newPos = { lat: latitude, lng: longitude };
+            setMarkerPos(newPos);
+            map.panTo(newPos);
+            reverseGeocode(latitude, longitude);
+          },
+          () => reverseGeocode(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng),
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+      } else {
+        reverseGeocode(DEFAULT_CENTER.lat, DEFAULT_CENTER.lng);
+      }
+    },
+    [reverseGeocode]
+  );
 
-    const map = L.map(mapContainerRef.current, {
-      center: [defaultLat, defaultLng],
-      zoom: 16,
-      zoomControl: true,
-    });
+  const onMarkerDragEnd = useCallback(
+    (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+      const lat = e.latLng.lat();
+      const lng = e.latLng.lng();
+      setMarkerPos({ lat, lng });
+      reverseGeocode(lat, lng);
+    },
+    [reverseGeocode]
+  );
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap contributors © CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20,
-    }).addTo(map);
+  if (loadError) {
+    return (
+      <div className="w-full rounded-xl border-2 border-border h-[300px] flex items-center justify-center text-sm text-muted-foreground">
+        Failed to load map
+      </div>
+    );
+  }
 
-    const marker = L.marker([defaultLat, defaultLng], { draggable: true }).addTo(map);
-
-    marker.on('dragend', () => {
-      const { lat, lng } = marker.getLatLng();
-      fetchAddress(lat, lng);
-    });
-
-    mapRef.current = map;
-    markerRef.current = marker;
-
-    // Request GPS
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude } = pos.coords;
-          map.setView([latitude, longitude], 16);
-          marker.setLatLng([latitude, longitude]);
-          fetchAddress(latitude, longitude);
-        },
-        () => {
-          // Fallback: use Kampala default
-          fetchAddress(defaultLat, defaultLng);
-        },
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-      );
-    } else {
-      fetchAddress(defaultLat, defaultLng);
-    }
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      markerRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  if (!isLoaded) {
+    return (
+      <div className="w-full rounded-xl border-2 border-border h-[300px] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
-      <div
-        ref={mapContainerRef}
-        className="w-full rounded-xl overflow-hidden border-2 border-border h-[300px]"
-      />
+      <GoogleMap
+        mapContainerClassName={MAP_CONTAINER_CLASS}
+        center={DEFAULT_CENTER}
+        zoom={16}
+        onLoad={onMapLoad}
+        options={{ clickableIcons: false }}
+      >
+        <Marker position={markerPos} draggable onDragEnd={onMarkerDragEnd} />
+      </GoogleMap>
       <div className="text-sm text-muted-foreground flex items-start gap-2 min-h-[1.5rem]">
         {addressStatus === 'loading' ? (
           <>
