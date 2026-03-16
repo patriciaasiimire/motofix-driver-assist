@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { PrivateRoute } from "@/components/PrivateRoute";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { RequestProvider } from "@/contexts/RequestContext";
+import { QuoteModal } from "@/components/QuoteModal";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Onboarding from "./pages/Onboarding";
@@ -25,6 +26,7 @@ function AppContent() {
   return (
     <>
       <NetworkBanner />
+      <QuoteModal />
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/login" element={<Login />} />

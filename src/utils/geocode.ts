@@ -10,6 +10,14 @@ const BACKEND_REVERSE_GEOCODE_URL = `${REQUESTS_BASE_URL}/geocode/reverse`;
 const MIN_INTERVAL_MS = 1000; // 1 request per second
 let lastRequestTime = 0;
 
+// Cache keyed by coordinates rounded to 4 decimal places (~11 m precision).
+// Prevents re-fetching the same location across multiple cards or re-renders.
+const geocodeCache = new Map<string, string | null>();
+
+function coordCacheKey(lat: number, lon: number): string {
+  return `${lat.toFixed(4)},${lon.toFixed(4)}`;
+}
+
 function throttle(): Promise<void> {
   const now = Date.now();
   const elapsed = now - lastRequestTime;
@@ -69,6 +77,9 @@ function formatFriendlyAddress(address: NominatimAddress, displayName?: string):
  * Only returns a display string — never the full API response.
  */
 export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  const key = coordCacheKey(lat, lon);
+  if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
+
   await throttle();
   lastRequestTime = Date.now();
 
@@ -95,14 +106,16 @@ export async function reverseGeocode(lat: number, lon: number): Promise<string |
     const address = data?.address;
     const displayName = data?.display_name;
 
+    let result: string | null = null;
     if (address) {
       const friendly = formatFriendlyAddress(address, displayName);
-      if (friendly) return friendly;
+      if (friendly) result = friendly;
     }
-    if (typeof displayName === 'string' && displayName.trim()) {
-      return displayName.split(',').slice(0, 2).map((s) => s.trim()).join(', ');
+    if (!result && typeof displayName === 'string' && displayName.trim()) {
+      result = displayName.split(',').slice(0, 2).map((s) => s.trim()).join(', ');
     }
-    return null;
+    geocodeCache.set(key, result);
+    return result;
   } catch {
     return null;
   }

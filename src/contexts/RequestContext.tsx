@@ -6,9 +6,20 @@ import React, {
   useRef,
   useCallback,
 } from 'react';
-import { requestsService } from '@/config/api';
+import { requestsService, paymentsService } from '@/config/api';
 import { createRequestsWs, WsPayload } from '@/services/driverWs';
 import { toast } from 'sonner';
+
+export interface QuoteRecord {
+  id: number;
+  request_id: number;
+  quoted_amount: number;
+  commission: number;
+  mechanic_payout: number;
+  quote_approved: boolean;
+  collection_status: string;
+  disbursement_status: string;
+}
 
 export interface Request {
   id: number | string;
@@ -29,6 +40,10 @@ interface RequestContextValue {
   error: string | null;
   isWsConnected: boolean;
   refresh: () => Promise<void>;
+  pendingQuote: QuoteRecord | null;
+  pendingQuoteRequestId: string | null;
+  setPendingQuote: (q: QuoteRecord | null) => void;
+  clearPendingQuote: () => void;
 }
 
 const RequestContext = createContext<RequestContextValue | null>(null);
@@ -45,10 +60,17 @@ export function RequestProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isWsConnected, setIsWsConnected] = useState(false);
+  const [pendingQuote, setPendingQuote] = useState<QuoteRecord | null>(null);
+  const [pendingQuoteRequestId, setPendingQuoteRequestId] = useState<string | null>(null);
 
   const previousStatusesRef = useRef<Map<string, string>>(new Map());
-  // Track whether WS ever connected to decide if polling is needed
   const wsEverConnected = useRef(false);
+  const quoteCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearPendingQuote = useCallback(() => {
+    setPendingQuote(null);
+    setPendingQuoteRequestId(null);
+  }, []);
 
   const applyUpdates = useCallback((incoming: Request[]) => {
     incoming.forEach((req) => {
@@ -140,8 +162,41 @@ export function RequestProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(() => fetchAll(false), [fetchAll]);
 
+  // Poll for a pending quote whenever there are accepted/en_route requests
+  useEffect(() => {
+    const active = requests.filter(
+      (r) => r.status === 'accepted' || r.status === 'en_route'
+    );
+
+    if (quoteCheckRef.current) clearInterval(quoteCheckRef.current);
+    if (active.length === 0) return;
+
+    const checkForQuote = async () => {
+      for (const req of active) {
+        try {
+          const res = await paymentsService.getQuote(String(req.id));
+          const q: QuoteRecord = res.data;
+          if (q && q.collection_status !== 'success') {
+            setPendingQuote(q);
+            setPendingQuoteRequestId(String(req.id));
+            return;
+          }
+        } catch {
+          // No quote yet — keep polling
+        }
+      }
+    };
+
+    checkForQuote();
+    quoteCheckRef.current = setInterval(checkForQuote, 5000);
+    return () => { if (quoteCheckRef.current) clearInterval(quoteCheckRef.current); };
+  }, [requests]);
+
   return (
-    <RequestContext.Provider value={{ requests, isLoading, error, isWsConnected, refresh }}>
+    <RequestContext.Provider value={{
+      requests, isLoading, error, isWsConnected, refresh,
+      pendingQuote, pendingQuoteRequestId, setPendingQuote, clearPendingQuote,
+    }}>
       {children}
     </RequestContext.Provider>
   );
