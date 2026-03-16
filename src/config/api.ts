@@ -71,11 +71,6 @@ const addAuthInterceptor = (instance: ReturnType<typeof axios.create>) => {
         message: error.message,
       });
       
-      if (error.response?.status === 401) {
-        localStorage.removeItem('motofix_token');
-        localStorage.removeItem('motofix_user');
-        window.location.href = '/login';
-      }
       return Promise.reject(error);
     }
   );
