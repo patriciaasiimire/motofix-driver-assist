@@ -3,11 +3,13 @@ import axios from 'axios';
 // Base URLs for microservices
 export const AUTH_BASE_URL = 'https://motofix-auth-service.onrender.com';
 export const REQUESTS_BASE_URL = 'https://motofix-service-requests.onrender.com';
+export const PAYMENTS_BASE_URL = 'https://motofix-payments-service.onrender.com';
 
 // Add startup logging
 console.log('🚀 Initializing Motofix API:', {
   AUTH_BASE_URL,
   REQUESTS_BASE_URL,
+  PAYMENTS_BASE_URL,
   timestamp: new Date().toISOString(),
 });
 
@@ -28,6 +30,15 @@ export const requestsApi = axios.create({
   },
   withCredentials: true,
   timeout: 120000, // 2 min for media uploads
+});
+
+export const paymentsApi = axios.create({
+  baseURL: PAYMENTS_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  withCredentials: true,
+  timeout: 30000,
 });
 
 // JWT interceptor for authenticated requests
@@ -78,6 +89,7 @@ const addAuthInterceptor = (instance: ReturnType<typeof axios.create>) => {
 
 addAuthInterceptor(authApi);
 addAuthInterceptor(requestsApi);
+addAuthInterceptor(paymentsApi);
 
 // Auth API functions
 export const authService = {
@@ -125,17 +137,17 @@ export const requestsService = {
     requestsApi.get<{ phone: string }>(`/requests/${id}/call-partner`),
 };
 
-// Payment API functions
+// Payment API functions — routed to motofix-payments-service
 export const paymentsService = {
   getQuote: (requestId: string) =>
-    requestsApi.get(`/payments/quote/${requestId}`),
+    paymentsApi.get(`/payments/quote/${requestId}`),
 
   approveQuote: (requestId: string) =>
-    requestsApi.post(`/payments/approve/${requestId}`),
+    paymentsApi.post(`/payments/approve/${requestId}`),
 
   collect: (requestId: string, driverPhone: string) =>
-    requestsApi.post(`/payments/collect/${requestId}`, { phone: driverPhone }),
+    paymentsApi.post(`/payments/collect/${requestId}`, { phone: driverPhone }),
 
   getStatus: (requestId: string) =>
-    requestsApi.get(`/payments/status/${requestId}`),
+    paymentsApi.get(`/payments/status/${requestId}`),
 };
